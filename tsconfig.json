@@ -1,0 +1,13 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compileOnSave": false,
+  "files": [],
+  "references": [
+    {
+      "path": "./apps/WebCrawling-e2e"
+    },
+    {
+      "path": "./apps/WebCrawling"
+    }
+  ]
+}

@@ -1,0 +1,26 @@
+{
+  "name": "@web-crawling/WebCrawling-e2e",
+  "version": "0.0.1",
+  "private": true,
+  "nx": {
+    "implicitDependencies": [
+      "@web-crawling/WebCrawling"
+    ],
+    "targets": {
+      "e2e": {
+        "executor": "@nx/jest:jest",
+        "outputs": [
+          "{projectRoot}/test-output/jest/coverage"
+        ],
+        "options": {
+          "jestConfig": "apps/WebCrawling-e2e/jest.config.ts",
+          "passWithNoTests": true
+        },
+        "dependsOn": [
+          "@web-crawling/WebCrawling:build",
+          "@web-crawling/WebCrawling:serve"
+        ]
+      }
+    }
+  }
+}
