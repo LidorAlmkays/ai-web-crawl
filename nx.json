@@ -42,7 +42,12 @@
       "options": {
         "targetName": "test"
       },
-      "exclude": ["apps/WebCrawling-e2e/**/*"]
+      "exclude": [
+        "apps/WebCrawling-e2e/**/*",
+        "apps-e2e/**/*",
+        "apps/gateway-e2e/**/*",
+        "apps/gateway-e2e/**/*"
+      ]
     }
   ],
   "targetDefaults": {

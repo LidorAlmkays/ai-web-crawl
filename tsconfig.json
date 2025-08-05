@@ -8,6 +8,12 @@
     },
     {
       "path": "./apps/WebCrawling"
+    },
+    {
+      "path": "./apps/gateway-e2e"
+    },
+    {
+      "path": "./apps/gateway"
     }
   ]
 }

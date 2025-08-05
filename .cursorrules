@@ -1,0 +1,389 @@
+# DTO Validation Rules for TypeScript
+
+## Core Rules
+
+### 1. DTO Class Definition
+
+- **ALWAYS** define DTOs as classes, never interfaces
+- **ALWAYS** use `class-validator` decorators for validation
+- **ALWAYS** import required decorators from 'class-validator'
+- **ALWAYS** export both the class and a type alias
+- **ALWAYS** add JSDoc comments for complex validation rules
+
+### 2. Required Imports
+
+```typescript
+import {
+  IsString,
+  IsNotEmpty,
+  IsUrl,
+  IsOptional,
+  IsBoolean,
+  IsDateString,
+  IsUUID,
+  MinLength,
+  MaxLength,
+  IsEmail,
+  Matches,
+  IsNumber,
+  IsPositive,
+  IsInt,
+  IsArray,
+  ValidateNested,
+  IsEnum,
+} from 'class-validator';
+import { Type } from 'class-transformer';
+```
+
+### 3. Validation Decorator Usage Rules
+
+#### String Fields:
+
+- **ALWAYS** use `@IsString()` for string type validation
+- **ALWAYS** use `@IsNotEmpty()` for required string fields
+- **ALWAYS** use `@MinLength(n)` and `@MaxLength(n)` for length constraints
+- **ALWAYS** use `@IsEmail()` for email validation
+- **ALWAYS** use `@IsUrl()` for URL validation
+- **ALWAYS** use `@Matches(regex)` for custom pattern validation
+
+#### Number Fields:
+
+- **ALWAYS** use `@IsNumber()` for number type validation
+- **ALWAYS** use `@IsPositive()` for positive numbers
+- **ALWAYS** use `@IsInt()` for integer validation
+
+#### Boolean Fields:
+
+- **ALWAYS** use `@IsBoolean()` for boolean validation
+
+#### Date Fields:
+
+- **ALWAYS** use `@IsDateString()` for ISO date string validation
+
+#### Optional Fields:
+
+- **ALWAYS** use `@IsOptional()` for optional fields
+
+#### Complex Validation:
+
+- **ALWAYS** use `@IsUUID()` for UUID validation
+- **ALWAYS** use `@IsEnum(values)` for enum validation
+- **ALWAYS** use `@IsArray()` for array validation
+- **ALWAYS** use `@ValidateNested()` and `@Type(() => Class)` for nested objects
+
+### 4. DTO File Structure Template
+
+```typescript
+import {
+  IsString,
+  IsNotEmpty,
+  IsUrl,
+  IsOptional,
+  IsBoolean,
+  IsDateString,
+  IsUUID,
+  MinLength,
+  MaxLength,
+  IsEmail,
+  Matches,
+} from 'class-validator';
+
+/**
+ * DTO for [purpose]
+ * [Description of validation rules and constraints]
+ */
+export class DtoNameDto {
+  @IsString()
+  @IsNotEmpty()
+  @MinLength(1)
+  @MaxLength(255)
+  fieldName: string;
+
+  @IsUrl()
+  @IsNotEmpty()
+  @MinLength(10)
+  @MaxLength(2048)
+  url: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  optionalField?: string;
+}
+
+// Export type alias for the class
+export type DtoNameDtoType = DtoNameDto;
+```
+
+### 5. Validation Order Rules
+
+1. **ALWAYS** start with type validation (`@IsString()`, `@IsNumber()`, etc.)
+2. **ALWAYS** add required/optional validation (`@IsNotEmpty()`, `@IsOptional()`)
+3. **ALWAYS** add format validation (`@IsEmail()`, `@IsUrl()`, etc.)
+4. **ALWAYS** add length validation (`@MinLength()`, `@MaxLength()`)
+5. **ALWAYS** add custom validation (`@Matches()`, `@IsEnum()`) last
+
+### 6. Error Message Rules
+
+- **ALWAYS** provide custom error messages for complex validation
+- **ALWAYS** use descriptive error messages
+- **ALWAYS** include field name in error messages
+
+```typescript
+@Matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/, {
+  message: 'Password must contain at least one uppercase letter, one lowercase letter, and one number'
+})
+```
+
+### 7. Default Value Rules
+
+- **ALWAYS** provide default values for optional fields when appropriate
+- **ALWAYS** use TypeScript default parameter syntax
+
+```typescript
+@IsNumber()
+@IsPositive()
+@IsInt()
+@IsOptional()
+page?: number = 1;
+```
+
+### 8. Nested Object Rules
+
+- **ALWAYS** use `@ValidateNested()` for nested objects
+- **ALWAYS** use `@Type(() => Class)` to specify the nested class
+- **ALWAYS** create separate DTO classes for nested objects
+
+```typescript
+@IsOptional()
+@ValidateNested()
+@Type(() => NestedDto)
+nestedField?: NestedDto;
+```
+
+### 9. Array Validation Rules
+
+- **ALWAYS** use `@IsArray()` for array validation
+- **ALWAYS** use `@IsString({ each: true })` for string arrays
+- **ALWAYS** use `@MaxLength(n, { each: true })` for array element validation
+
+```typescript
+@IsArray()
+@IsString({ each: true })
+@MaxLength(50, { each: true })
+@IsOptional()
+tags?: string[];
+```
+
+### 10. Controller Integration Rules
+
+- **ALWAYS** use the validation utility for DTO validation
+- **ALWAYS** handle validation errors with proper HTTP status codes
+- **ALWAYS** log validation failures for debugging
+
+```typescript
+import { validateDto } from '../../../../common/utils/validation';
+
+const validationResult = await validateDto(DtoClass, req.body);
+
+if (!validationResult.isValid) {
+  return res.status(400).json({
+    success: false,
+    message: 'Validation failed',
+    error: validationResult.errorMessage,
+  });
+}
+```
+
+### 11. Testing Rules
+
+- **ALWAYS** write unit tests for DTO validation
+- **ALWAYS** test both valid and invalid data scenarios
+- **ALWAYS** test all validation decorators used in the DTO
+- **ALWAYS** use `plainToClass()` and `validate()` for testing
+
+### 12. Documentation Rules
+
+- **ALWAYS** add JSDoc comments for complex validation rules
+- **ALWAYS** document any custom validation patterns
+- **ALWAYS** include examples of valid/invalid data
+- **ALWAYS** explain the purpose and constraints of each field
+
+### 13. Common Patterns
+
+#### Input DTO Pattern:
+
+```typescript
+export class CreateEntityDto {
+  @IsString()
+  @IsNotEmpty()
+  @MinLength(2)
+  @MaxLength(100)
+  name: string;
+
+  @IsEmail()
+  @IsNotEmpty()
+  email: string;
+
+  @IsUrl()
+  @IsOptional()
+  website?: string;
+}
+```
+
+#### Response DTO Pattern:
+
+```typescript
+export class EntityResponseDto {
+  @IsUUID()
+  id: string;
+
+  @IsString()
+  @IsNotEmpty()
+  name: string;
+
+  @IsDateString()
+  createdAt: string;
+
+  @IsDateString()
+  updatedAt: string;
+}
+```
+
+#### Search/Filter DTO Pattern:
+
+```typescript
+export class SearchEntityDto {
+  @IsString()
+  @IsOptional()
+  @MaxLength(100)
+  query?: string;
+
+  @IsNumber()
+  @IsPositive()
+  @IsInt()
+  @IsOptional()
+  page?: number = 1;
+
+  @IsString()
+  @IsOptional()
+  @IsEnum(['asc', 'desc'])
+  sortOrder?: string = 'desc';
+}
+```
+
+### 14. Migration Rules
+
+- **ALWAYS** convert interfaces to classes when adding validation
+- **ALWAYS** update controller code to use validation
+- **ALWAYS** update tests to reflect new validation rules
+- **ALWAYS** maintain backward compatibility where possible
+
+### 15. Error Handling Rules
+
+- **ALWAYS** return HTTP 400 for validation errors
+- **ALWAYS** include detailed error messages
+- **ALWAYS** log validation failures
+- **ALWAYS** provide structured error responses
+
+### 16. Performance Rules
+
+- **ALWAYS** use efficient validation decorators
+- **ALWAYS** avoid complex regex patterns when possible
+- **ALWAYS** use appropriate length constraints
+- **ALWAYS** validate only what's necessary
+
+### 17. Security Rules
+
+- **ALWAYS** validate input data thoroughly
+- **ALWAYS** use appropriate length limits
+- **ALWAYS** sanitize user input
+- **ALWAYS** validate file uploads properly
+
+### 18. Maintenance Rules
+
+- **ALWAYS** keep validation rules up to date
+- **ALWAYS** review and update validation as requirements change
+- **ALWAYS** document changes to validation rules
+- **ALWAYS** test validation rules after changes
+
+## Examples
+
+### Complete DTO Example:
+
+```typescript
+import {
+  IsString,
+  IsNotEmpty,
+  IsUrl,
+  IsOptional,
+  IsBoolean,
+  IsDateString,
+  IsUUID,
+  MinLength,
+  MaxLength,
+  IsEmail,
+  Matches,
+} from 'class-validator';
+
+/**
+ * DTO for user registration
+ * Validates user input with comprehensive validation rules
+ */
+export class RegisterUserDto {
+  @IsString()
+  @IsNotEmpty()
+  @MinLength(2)
+  @MaxLength(50)
+  firstName: string;
+
+  @IsString()
+  @IsNotEmpty()
+  @MinLength(2)
+  @MaxLength(50)
+  lastName: string;
+
+  @IsEmail()
+  @IsNotEmpty()
+  email: string;
+
+  @IsString()
+  @IsNotEmpty()
+  @MinLength(8)
+  @MaxLength(128)
+  @Matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/, {
+    message:
+      'Password must contain at least one uppercase letter, one lowercase letter, and one number',
+  })
+  password: string;
+
+  @IsUrl()
+  @IsOptional()
+  profileUrl?: string;
+
+  @IsString()
+  @IsOptional()
+  @MaxLength(500)
+  bio?: string;
+}
+
+export type RegisterUserDtoType = RegisterUserDto;
+```
+
+## Required Dependencies
+
+```json
+{
+  "class-validator": "^0.14.0",
+  "class-transformer": "^0.5.1"
+}
+```
+
+## TypeScript Configuration
+
+```json
+{
+  "experimentalDecorators": true,
+  "emitDecoratorMetadata": true
+}
+```

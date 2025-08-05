@@ -1,0 +1,285 @@
+# TypeScript Clean Architecture Project Rules
+
+You are working with a sophisticated TypeScript project following Clean Architecture principles. This project emphasizes separation of concerns, dependency inversion, and maintainable code structure.
+
+## Project Structure Rules
+
+### Project Root Structure
+
+```
+apps/[service-name]/
+├── src/                    # Application source code
+├── tests/                  # Test files (mirrors src/ structure)
+├── dist/                   # Generated (outside service in Nx)
+├── node_modules/           # Generated (workspace-level in Nx)
+├── .env                    # Environment variables (NEVER commit)
+├── .env.example           # Environment template (commit this)
+├── tsconfig.json          # TypeScript configuration
+├── package.json           # Project manifest
+└── README.md             # Project documentation
+```
+
+### Source Code Architecture (src/)
+
+#### 1. Application Orchestrator (app.ts)
+
+**Role**: Composition Root / Dependency Injection Container
+**Responsibilities**:
+
+- Dependency injection and wiring
+- Infrastructure initialization (databases, Kafka clients)
+- Application lifecycle management (startup/shutdown)
+- Adapter initialization (REST server, Kafka consumers/producers)
+
+**Rules**:
+
+- NO business logic in app.ts
+- NO route definitions in app.ts
+- NO direct server startup in app.ts
+- Must handle graceful shutdown procedures
+- Must initialize all infrastructure components
+
+#### 2. Configuration Management (config/)
+
+**Role**: Centralized configuration management
+**Structure**:
+
+```
+config/
+├── index.ts              # Main configuration aggregator
+├── database.ts           # Database connection settings
+├── kafka.ts             # Kafka broker/client settings
+├── externalApis.ts      # Third-party API configurations
+└── server.ts            # HTTP server settings
+```
+
+**Rules**:
+
+- All configuration must be environment-variable driven
+- No hardcoded values in source code
+- Use process.env with fallback defaults
+- Export typed configuration objects
+
+#### 3. Common Utilities (common/)
+
+**Role**: Cross-cutting concerns and generic utilities
+**Structure**:
+
+```
+common/
+├── interfaces/           # Shared TypeScript interfaces
+├── utils/               # Generic utility functions
+│   ├── logger.ts        # Application logging
+│   ├── errorHandling.ts # Error handling utilities
+│   └── validation.ts    # Validation helpers
+└── middlewares/         # Application-wide middleware
+```
+
+**Rules**:
+
+- NO business logic in common/
+- Utilities must be truly generic and reusable
+- Middleware should be framework-agnostic where possible
+- Logger must support structured logging with levels
+
+#### 4. Core Business Logic (core/)
+
+**Role**: Clean Architecture heart - domain models and business rules
+
+##### Domain Layer (core/domain/)
+
+**Role**: Innermost layer with entities and core business rules
+**Rules**:
+
+- Entities must be rich domain objects with behavior
+- Encapsulate business invariants
+- Persistence-agnostic design
+- Use class-based entities with methods
+
+##### Application Layer (core/application/)
+
+**Role**: Use cases and application-specific business rules
+**Rules**:
+
+- Orchestrate domain entities
+- Implement application-specific workflows
+- Depend on domain/ and ports/
+- NO direct infrastructure dependencies
+
+##### Ports Layer (core/ports/)
+
+**Role**: Interface definitions for external dependencies
+**Rules**:
+
+- Define repository interfaces (IUserRepository)
+- Define gateway interfaces (IPaymentGateway)
+- Define publisher interfaces (INotificationPublisher)
+- Enable dependency inversion
+
+#### 5. Infrastructure Layer (infrastructure/)
+
+**Role**: Concrete implementations of ports and external integrations
+
+##### Persistence (infrastructure/persistence/)
+
+**Rules**:
+
+- Implement repository interfaces from core/ports/
+- Handle database-specific logic (ORM/ODM)
+- Manage database connections
+- Translate between domain entities and database formats
+
+##### Gateway (infrastructure/gateway/)
+
+**Rules**:
+
+- Implement external service interfaces
+- Handle third-party API integrations
+- Manage outgoing communication protocols
+- Abstract external system complexity
+
+##### API Adapters (infrastructure/api/)
+
+**Structure**:
+
+```
+infrastructure/api/
+├── rest/
+│   ├── controllers/     # HTTP request handlers
+│   ├── routes/          # Route definitions
+│   ├── middlewares/     # REST-specific middleware
+│   └── dtos/           # Data transfer objects
+└── kafka/
+    ├── consumers/       # Kafka message consumers
+    ├── producers/       # Kafka message producers
+    └── dtos/           # Kafka message DTOs
+```
+
+**Rules**:
+
+- Controllers should be thin and delegate to use cases
+- Routes should be defined separately from controllers
+- DTOs for input/output validation
+- Middleware for cross-cutting concerns
+
+#### 6. Server Bootstrap (server.ts)
+
+**Role**: HTTP server initialization and startup
+**Rules**:
+
+- Thin wrapper around app.ts configuration
+- Handle HTTP server lifecycle
+- NO business logic
+- NO route definitions
+- Must use configured app instance from app.ts
+
+#### 7. Type Definitions (types/)
+
+**Role**: Global TypeScript type definitions
+**Rules**:
+
+- Global types and enums
+- Declaration merging files
+- Custom utility types
+- Framework-specific type extensions
+
+## Implementation Rules
+
+### Dependency Management
+
+- Use dependency injection pattern
+- Core layers must NOT depend on infrastructure
+- Infrastructure implements core interfaces
+- Use interfaces for all external dependencies
+
+### Error Handling
+
+- Implement structured error handling
+- Use custom error classes for domain errors
+- Log errors with appropriate context
+- Provide meaningful error messages
+
+### Logging
+
+- Use structured logging throughout
+- Include correlation IDs for request tracing
+- Log at appropriate levels (debug, info, warn, error)
+- Include relevant context in log messages
+
+### Testing
+
+- Unit tests for domain and application layers
+- Integration tests for infrastructure
+- E2E tests for complete workflows
+- Mock external dependencies in tests
+
+### Code Organization
+
+- Follow single responsibility principle
+- Use meaningful file and folder names
+- Group related functionality together
+- Maintain clear separation between layers
+
+## File Naming Conventions
+
+- Use kebab-case for file and folder names
+- Use PascalCase for class names
+- Use camelCase for function and variable names
+- Use UPPER_SNAKE_CASE for constants
+
+## Import/Export Rules
+
+- Use relative imports within the same layer
+- Use absolute imports for cross-layer dependencies
+- Export only what's necessary from modules
+- Use barrel exports (index.ts) for clean imports
+
+## Environment Configuration
+
+- Use .env for local development
+- Use .env.example for documentation
+- Validate required environment variables at startup
+- Provide meaningful defaults where appropriate
+
+## Security Considerations
+
+- Never commit .env files
+- Validate all inputs
+- Use parameterized queries for database operations
+- Implement proper authentication/authorization
+- Sanitize user inputs
+
+## Performance Guidelines
+
+- Use connection pooling for databases
+- Implement caching where appropriate
+- Use async/await properly
+- Handle memory leaks in long-running processes
+- Monitor and log performance metrics
+
+## TypeScript Best Practices
+
+- Use strict TypeScript configuration
+- Prefer interfaces over types for object shapes
+- Use enums for fixed sets of values
+- Implement proper type guards
+- Use generic types for reusable components
+- Avoid `any` type - use `unknown` when necessary
+- Use union types for better type safety
+- Implement proper error types and handling
+
+## Code Quality Standards
+
+- Use ESLint for code linting
+- Use Prettier for code formatting
+- Implement proper JSDoc comments
+- Use meaningful variable and function names
+- Keep functions small and focused
+- Avoid deep nesting in functions
+- Use early returns to reduce complexity
+- Implement proper error boundaries
+  description:
+  globs:
+  alwaysApply: false
+
+---
