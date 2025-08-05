@@ -1,202 +1,147 @@
-# Gateway Service
+# Gateway Application
 
-A REST API gateway service built with Express.js following Clean Architecture principles. This service handles web crawling requests and publishes them to Kafka.
+## Overview
 
-## Features
-
-- **Clean Architecture**: Follows domain-driven design with clear separation of concerns
-- **REST API**: HTTP endpoints for crawl request management
-- **Kafka Integration**: Publishes crawl requests to Kafka topics
-- **Structured Logging**: Comprehensive logging with correlation IDs
-- **Error Handling**: Proper error handling and validation
-- **Health Checks**: Built-in health check endpoint
-
-## API Endpoints
-
-### Submit Crawl Request
-
-- **POST** `/api/crawl`
-- **Description**: Submits a web crawling request
-- **Request Body**:
-  ```json
-  {
-    "url": "https://example.com",
-    "query": "give me all the prices of products",
-    "username": "john.doe"
-  }
-  ```
-- **Response**:
-  ```json
-  {
-    "success": true,
-    "message": "Crawl request submitted successfully",
-    "crawlRequest": {
-      "url": "https://example.com",
-      "query": "give me all the prices of products",
-      "username": "john.doe",
-      "hash": "a1b2c3d4e5f6...",
-      "createdAt": "2024-01-01T12:00:00.000Z"
-    }
-  }
-  ```
-
-### Health Check
-
-- **GET** `/health`
-- **Description**: Returns the health status of the service
-- **Response**:
-  ```json
-  {
-    "success": true,
-    "message": "Gateway service is healthy",
-    "timestamp": "2024-01-01T12:00:00.000Z"
-  }
-  ```
-
-## Kafka Integration
-
-The service publishes crawl requests to the `url-to-crawl` Kafka topic with the following message format:
-
-```json
-{
-  "url": "https://example.com",
-  "query": "give me all the prices of products",
-  "hash": "a1b2c3d4e5f6..."
-}
-```
-
-The hash is generated from the combination of `username + query + url` using SHA-256.
-
-## Development
-
-### Prerequisites
-
-- Node.js 18+
-- Nx CLI
-- Docker and Docker Compose
-
-### Running the Service
-
-1. **Start Kafka Infrastructure**:
-
-   ```bash
-   docker-compose up -d
-   ```
-
-2. **Development Mode**:
-
-   ```bash
-   nx serve gateway
-   ```
-
-3. **Production Build**:
-
-   ```bash
-   nx build gateway
-   ```
-
-4. **Testing**:
-   ```bash
-   nx test gateway
-   ```
-
-### Environment Variables
-
-Create a `.env` file in the `apps/gateway` directory:
-
-```env
-# Server Configuration
-PORT=3000
-HOST=localhost
-NODE_ENV=development
-
-# Database Configuration
-DATABASE_URL=mongodb://localhost:27017/gateway
-DATABASE_POOL_SIZE=10
-
-# Logging Configuration
-LOG_LEVEL=info
-
-# Kafka Configuration
-KAFKA_CLIENT_ID=gateway-crawl-request-publisher
-KAFKA_BROKERS=localhost:9092
-KAFKA_TOPIC=url-to-crawl
-```
+The Gateway application is part of the WebCrawling system and serves as the entry point for crawl requests. It provides a REST API for submitting crawl requests and publishes them to Kafka for processing.
 
 ## Architecture
 
-This service follows Clean Architecture principles:
+### Kafka Messaging
 
+The application uses a centralized Kafka client service to manage all Kafka connections. This ensures:
+
+- **Single Kafka Instance**: All publishers and consumers share the same Kafka client
+- **Resource Efficiency**: Reduces connection overhead and memory usage
+- **Centralized Management**: Connection lifecycle is managed in one place
+- **Dependency Injection**: Easy to inject and mock for testing
+
+### Key Components
+
+#### KafkaClientService
+
+- Manages a single Kafka instance
+- Provides producer and consumer factories
+- Handles connection lifecycle (connect/disconnect)
+- Tracks connection state
+
+#### KafkaPublisherBase
+
+- Abstract base class for all Kafka publishers
+- Handles message publishing with proper error handling
+- Automatically manages connection state
+- Provides consistent logging
+
+#### KafkaConsumerBase
+
+- Abstract base class for all Kafka consumers
+- Handles message consumption with proper error handling
+- Manages subscription and message processing
+- Provides consistent logging
+
+## Usage
+
+### Creating a Publisher
+
+```typescript
+import { KafkaPublisherBase } from './infrastructure/messaging/kafka-publisher.base';
+import { kafkaClientService } from './infrastructure/messaging/kafka-client.service';
+
+export class MyPublisher extends KafkaPublisherBase {
+  constructor() {
+    super(kafkaClientService, 'my-topic');
+  }
+
+  public async publishMyMessage(data: any): Promise<void> {
+    const message = {
+      data,
+      timestamp: new Date().toISOString(),
+    };
+
+    const headers = {
+      'message-type': 'my_message',
+      source: 'gateway',
+    };
+
+    await this.publishMessage(message, 'my-key', headers);
+  }
+}
 ```
-src/
-├── app.ts                    # Application orchestrator
-├── server.ts                 # Server bootstrap
-├── config/                   # Configuration management
-├── common/                   # Cross-cutting concerns
-│   ├── interfaces/          # Shared interfaces
-│   └── utils/              # Utilities (logger, etc.)
-├── core/                    # Business logic
-│   ├── domain/             # Domain entities
-│   ├── application/        # Use cases
-│   └── ports/              # Interface definitions
-└── infrastructure/          # External integrations
-    ├── messaging/           # Kafka messaging
-    └── api/                # REST API adapters
-        └── rest/
-            ├── controllers/ # HTTP handlers
-            ├── routes/      # Route definitions
-            └── dtos/       # Data transfer objects
+
+### Creating a Consumer
+
+```typescript
+import { KafkaConsumerBase } from './infrastructure/messaging/kafka-consumer.base';
+import { kafkaClientService } from './infrastructure/messaging/kafka-client.service';
+
+export class MyConsumer extends KafkaConsumerBase {
+  constructor() {
+    super(kafkaClientService, 'my-topic', 'my-consumer-group');
+  }
+
+  public async start(): Promise<void> {
+    await this.startConsumer(async (message) => {
+      await this.handleMessage(message);
+    });
+  }
+
+  public async stop(): Promise<void> {
+    await this.stopConsumer();
+  }
+
+  private async handleMessage(message: any): Promise<void> {
+    // Process the message
+    console.log('Received message:', message);
+  }
+}
 ```
 
-## Testing the API
+## Configuration
 
-### Using curl
+Kafka configuration is managed in `src/config/kafka.ts`:
+
+```typescript
+export const kafkaConfig = {
+  clientId: process.env.KAFKA_CLIENT_ID || 'gateway-crawl-request-publisher',
+  brokers: (process.env.KAFKA_BROKERS || 'localhost:9092').split(','),
+  // ... other configuration
+};
+```
+
+## Environment Variables
+
+- `KAFKA_CLIENT_ID`: Kafka client identifier
+- `KAFKA_BROKERS`: Comma-separated list of Kafka brokers
+- `KAFKA_CRAWL_REQUEST_TOPIC`: Topic for crawl requests
+- `KAFKA_CRAWL_RESPONSE_TOPIC`: Topic for crawl responses
+
+## Testing
+
+The application includes comprehensive tests for the Kafka messaging components:
+
+- `KafkaClientService` tests
+- `KafkaPublisherBase` tests
+- `KafkaConsumerBase` tests
+- Publisher implementation tests
+
+Run tests with:
 
 ```bash
-# Submit a crawl request
-curl -X POST http://localhost:3000/api/crawl \
-  -H "Content-Type: application/json" \
-  -d '{
-    "url": "https://example.com",
-    "query": "give me all the prices of products",
-    "username": "john.doe"
-  }'
-
-# Check health
-curl http://localhost:3000/health
+npm test
 ```
 
-### Using Postman
+## Lifecycle Management
 
-1. Create a new POST request to `http://localhost:3000/api/crawl`
-2. Set Content-Type header to `application/json`
-3. Add request body:
-   ```json
-   {
-     "url": "https://example.com",
-     "query": "give me all the prices of products",
-     "username": "john.doe"
-   }
-   ```
+The application manages Kafka connection lifecycle during startup and shutdown:
 
-## Kafka UI
+1. **Startup**: Connects to Kafka before starting the HTTP server
+2. **Shutdown**: Disconnects from Kafka during graceful shutdown
+3. **Error Handling**: Comprehensive error handling and logging
 
-Access the Kafka UI at `http://localhost:8080` to monitor topics and messages.
+## Benefits
 
-## Logging
-
-The service uses structured logging with the following levels:
-
-- **DEBUG**: Detailed debugging information
-- **INFO**: General information about application flow
-- **WARN**: Warning messages for potential issues
-- **ERROR**: Error messages for failures
-
-Logs include correlation IDs and relevant context for debugging.
-
-## Notes
-
-- This implementation publishes crawl requests to Kafka for processing
-- The service generates a unique hash for each request
-- Console output shows the crawl request details
-- Kafka messages are published to the `url-to-crawl` topic
+- **Resource Efficiency**: Single Kafka client instead of multiple instances
+- **Centralized Configuration**: All Kafka settings in one place
+- **Better Error Handling**: Comprehensive logging and error management
+- **Lifecycle Management**: Proper connection handling during app startup/shutdown
+- **Testability**: Easy to mock and test individual components
+- **Consistency**: Standardized patterns for publishers and consumers
