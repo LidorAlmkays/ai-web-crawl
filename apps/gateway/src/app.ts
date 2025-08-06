@@ -1,158 +1,108 @@
-import { KafkaCrawlRequestPublisher } from './infrastructure/gateway/crawl-request/kafka-crawl-request-publisher';
-import { SubmitCrawlRequestUseCase } from './core/application/submit-crawl-request.usecase';
-import { CrawlController } from './infrastructure/api/rest/controllers/crawl.controller';
-import { createRestApi } from './infrastructure/api/rest/index';
-import { WebSocketServerManager } from './infrastructure/api/websocket/websocket-server';
-import { WebSocketCrawlHandler } from './infrastructure/api/websocket/websocket-crawl-handler';
-import { CrawlResponseConsumer } from './infrastructure/api/kafka/crawl-response-consumer';
 import { logger } from './common/utils/logger';
-import { kafkaClientService } from './infrastructure/messaging/kafka/kafka-client.service';
-import config from './config/index';
+import { kafkaClientService } from './common/clients/kafka-client';
+import { webSocketServerManager } from './common/clients/websocket-server';
+
+// --- Ports ---
+import { IWebscrapePort } from './application/ports/webscrape.port';
+import { IHashPort } from './application/ports/hash.port';
+import { IProcessCrawlResponsePort } from './application/ports/process-crawl-response.port';
+import { ICrawlRequestPublisherPort } from './infrastructure/ports/crawl-request-publisher.port';
+import { IUserNotificationPort } from './infrastructure/ports/user-notification.port';
+import { ICrawlStateRepositoryPort } from './infrastructure/ports/crawl-state-repository.port';
+
+// --- Services ---
+import { WebscrapeService } from './application/services/webscrape.service';
+import { Sha256HashService } from './application/services/sha256-hash.service';
+import { ProcessCrawlResponseService } from './application/services/process-crawl-response.service';
+
+// --- Adapters ---
+import { KafkaCrawlRequestPublisherAdapter } from './infrastructure/messaging/kafka/crawl-request.publisher.adapter';
+import { RedisCrawlStateRepositoryAdapter } from './infrastructure/persistence/redis/crawl-state.repository.adapter';
+import { WebSocketUserNotificationAdapter } from './infrastructure/notification/websocket/user-notification.adapter';
+
+// --- API ---
+import { setupWebSocketRoutes } from './api/websocket/routes';
+import {
+  initializeKafkaConsumers,
+  startAllConsumers,
+  stopAllConsumers,
+} from './api/kafka/kafka.router';
 
 export class Application {
-  private expressApp: any;
-  private server: any;
-  private wsManager!: WebSocketServerManager;
-  private wsCrawlHandler!: WebSocketCrawlHandler;
-  private crawlResponseConsumer!: CrawlResponseConsumer;
+  private crawlStateRepository!: ICrawlStateRepositoryPort;
 
   constructor() {
-    this.initializeApplication();
+    this.setupDependencies();
+    this.setupGracefulShutdown();
   }
 
-  private initializeApplication(): void {
-    try {
-      logger.info('Initializing application', {
-        environment: config.server.environment,
-      });
+  private setupDependencies(): void {
+    logger.info('Setting up application dependencies...');
 
-      // Initialize infrastructure components
-      const crawlRequestPublisher = new KafkaCrawlRequestPublisher();
+    // --- Infrastructure Adapters ---
+    const crawlRequestPublisher: ICrawlRequestPublisherPort =
+      new KafkaCrawlRequestPublisherAdapter(kafkaClientService);
+    this.crawlStateRepository = new RedisCrawlStateRepositoryAdapter();
+    const userNotification: IUserNotificationPort =
+      new WebSocketUserNotificationAdapter(webSocketServerManager);
 
-      // Initialize WebSocket server
-      this.wsManager = new WebSocketServerManager(8081);
-
-      // Initialize WebSocket crawl handler
-      this.wsCrawlHandler = new WebSocketCrawlHandler(
-        this.wsManager,
-        crawlRequestPublisher
+    // --- Application Services ---
+    const hashService: IHashPort = new Sha256HashService();
+    const webscrapeService: IWebscrapePort = new WebscrapeService(
+      hashService,
+      this.crawlStateRepository,
+      crawlRequestPublisher
+    );
+    const processCrawlResponseService: IProcessCrawlResponsePort =
+      new ProcessCrawlResponseService(
+        this.crawlStateRepository,
+        userNotification
       );
 
-      // Initialize Kafka response consumer
-      this.crawlResponseConsumer = new CrawlResponseConsumer(this.wsManager);
+    // --- Initialize API Routes and Consumers ---
+    setupWebSocketRoutes(webscrapeService);
+    initializeKafkaConsumers(kafkaClientService, processCrawlResponseService);
 
-      // Initialize use cases
-      const submitCrawlRequestUseCase = new SubmitCrawlRequestUseCase(
-        crawlRequestPublisher
-      );
-
-      // Initialize controllers
-      const crawlController = new CrawlController();
-      crawlController.setSubmitCrawlRequestPort(submitCrawlRequestUseCase);
-
-      // Initialize REST API
-      this.expressApp = createRestApi(crawlController);
-
-      logger.info('Application initialized successfully');
-    } catch (error) {
-      logger.error('Failed to initialize application', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-      });
-      throw error;
-    }
-  }
-
-  public getExpressApp(): any {
-    return this.expressApp;
+    logger.info('Dependencies set up successfully.');
   }
 
   public async start(): Promise<void> {
-    try {
-      logger.info('Starting application', {
-        port: config.server.port,
-        host: config.server.host,
-      });
+    await kafkaClientService.connect();
 
-      // Connect Kafka client before starting server
-      await kafkaClientService.connect();
-      logger.info('Kafka client connected during app startup');
-
-      // Start Kafka response consumer
-      await this.crawlResponseConsumer.start();
-      logger.info('Kafka response consumer started');
-
-      // Start HTTP server
-      this.server = this.expressApp.listen(
-        config.server.port,
-        config.server.host,
-        () => {
-          logger.info('Application started successfully', {
-            port: config.server.port,
-            host: config.server.host,
-            environment: config.server.environment,
-            wsPort: 8081,
-          });
-        }
-      );
-
-      // Graceful shutdown handling
-      this.setupGracefulShutdown();
-    } catch (error) {
-      logger.error('Failed to start application', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-      });
-      throw error;
+    if (
+      'connect' in this.crawlStateRepository &&
+      typeof this.crawlStateRepository.connect === 'function'
+    ) {
+      await this.crawlStateRepository.connect();
     }
+
+    await startAllConsumers();
+    logger.info('Application started successfully.');
   }
 
   public async stop(): Promise<void> {
-    try {
-      logger.info('Stopping application');
+    await stopAllConsumers();
 
-      if (this.server) {
-        this.server.close(() => {
-          logger.info('Application stopped successfully');
-        });
-      }
-
-      // Stop Kafka response consumer
-      await this.crawlResponseConsumer.stop();
-      logger.info('Kafka response consumer stopped');
-
-      // Close WebSocket server
-      this.wsManager.close();
-      logger.info('WebSocket server closed');
-
-      // Disconnect Kafka client before stopping server
-      await kafkaClientService.disconnect();
-      logger.info('Kafka client disconnected during app shutdown');
-
-      // Additional cleanup can be added here
-      // e.g., close database connections, stop background jobs, etc.
-    } catch (error) {
-      logger.error('Error stopping application', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-      });
-      throw error;
+    if (
+      'disconnect' in this.crawlStateRepository &&
+      typeof this.crawlStateRepository.disconnect === 'function'
+    ) {
+      await this.crawlStateRepository.disconnect();
     }
+
+    await kafkaClientService.disconnect();
+    webSocketServerManager.close();
+    logger.info('Application stopped successfully.');
   }
 
   private setupGracefulShutdown(): void {
-    const gracefulShutdown = async (signal: string) => {
-      logger.info(`Received ${signal}, starting graceful shutdown`);
-
-      try {
+    const signals = ['SIGINT', 'SIGTERM', 'SIGQUIT'];
+    signals.forEach((signal) => {
+      process.on(signal, async () => {
+        logger.info(`Received ${signal}, shutting down gracefully.`);
         await this.stop();
         process.exit(0);
-      } catch (error) {
-        logger.error('Error during graceful shutdown', {
-          error: error instanceof Error ? error.message : 'Unknown error',
-        });
-        process.exit(1);
-      }
-    };
-
-    process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
-    process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+      });
+    });
   }
 }

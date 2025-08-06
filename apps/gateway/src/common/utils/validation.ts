@@ -18,7 +18,7 @@ export interface ValidationResult<T> {
  * @param data - The data to validate
  * @returns Promise<ValidationResult<T>>
  */
-export async function validateDto<T>(
+export async function validateDto<T extends object>(
   dtoClass: new () => T,
   data: any
 ): Promise<ValidationResult<T>> {
@@ -94,7 +94,9 @@ function formatValidationErrors(errors: ValidationError[]): string {
  * @param dtoClass - The DTO class to validate against
  * @returns Express middleware function
  */
-export function createValidationMiddleware<T>(dtoClass: new () => T) {
+export function createValidationMiddleware<T extends object>(
+  dtoClass: new () => T
+) {
   return async (req: any, res: any, next: any) => {
     const validationResult = await validateDto(dtoClass, req.body);
 
