@@ -5,44 +5,25 @@ services:
   kafka:
     image: bitnami/kafka:3.7.0
     container_name: kafka
-    # Map host port 9092 to container's external listener port 29092
     ports:
       - '9092:29092'
     environment:
-      # Kafka Kraft Configuration
       - KAFKA_CFG_BROKER_ID=1
       - KAFKA_CFG_NODE_ID=1
       - KAFKA_CFG_PROCESS_ROLES=broker,controller
       - KAFKA_CFG_CONTROLLER_QUORUM_VOTERS=1@kafka:9093
-
-      # Define multiple listeners:
-      # PLAINTEXT_INTERNAL: For communication within the Docker network (e.g., Kafka UI)
-      # PLAINTEXT_EXTERNAL: For communication from the host machine
-      # CONTROLLER: For internal Kraft communication
       - KAFKA_CFG_LISTENERS=PLAINTEXT_INTERNAL://:9092,PLAINTEXT_EXTERNAL://:29092,CONTROLLER://:9093
-
-      # Advertise listeners correctly:
-      # Kafka UI will connect to kafka:9092
-      # External clients on the host will connect to localhost:9092 (mapped to 29092 in container)
       - KAFKA_CFG_ADVERTISED_LISTENERS=PLAINTEXT_INTERNAL://kafka:9092,PLAINTEXT_EXTERNAL://localhost:9092
-
-      # Map security protocols for each listener
       - KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP=PLAINTEXT_INTERNAL:PLAINTEXT,PLAINTEXT_EXTERNAL:PLAINTEXT,CONTROLLER:PLAINTEXT
-
-      # Define the listener for inter-broker communication (important for single-node Kraft setup too)
       - KAFKA_CFG_INTER_BROKER_LISTENER_NAME=PLAINTEXT_INTERNAL
-
-      # Specify the controller listener name for Kraft
       - KAFKA_CFG_CONTROLLER_LISTENER_NAMES=CONTROLLER
-
-      # Other Kafka configurations
       - KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE=true
       - KAFKA_CFG_LOG_DIRS=/bitnami/kafka/data/logs
       - KAFKA_CFG_NUM_PARTITIONS=1
       - KAFKA_CFG_OFFSETS_TOPIC_REPLICATION_FACTOR=1
       - KAFKA_CFG_TRANSACTION_STATE_LOG_REPLICATION_FACTOR=1
       - KAFKA_CFG_TRANSACTION_STATE_LOG_MIN_ISR=1
-      - KAFKA_KRAFT_CLUSTER_ID=abcdefghijklmnopqrstuv # IMPORTANT: Replace with a unique UUID in production
+      - KAFKA_KRAFT_CLUSTER_ID=abcdefghijklmnopqrstuv
     volumes:
       - kafka_data:/bitnami/kafka
     networks:
@@ -55,10 +36,9 @@ services:
       - '8080:8080'
     environment:
       - KAFKA_CLUSTERS_0_NAME=Local Kafka Cluster
-      # Kafka UI connects to the internal listener of the Kafka service
       - KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS=kafka:9092
-      - KAFKA_CLUSTERS_0_JMXPORT=9991 # Optional, for JMX metrics if enabled on Kafka
-      - KAFKA_CLUSTERS_0_READONLY=false # Optional: If you want to enable topic creation/deletion from Kafka UI
+      - KAFKA_CLUSTERS_0_JMXPORT=9991
+      - KAFKA_CLUSTERS_0_READONLY=false
     depends_on:
       - kafka
     networks:
@@ -67,6 +47,7 @@ services:
   redis:
     image: redis:7.2.5-alpine
     container_name: redis
+    command: redis-server --requirepass your-default-password
     ports:
       - '6379:6379'
     volumes:

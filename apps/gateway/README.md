@@ -1,147 +1,29 @@
-# Gateway Application
+# Gateway Service
 
 ## Overview
 
-The Gateway application is part of the WebCrawling system and serves as the entry point for crawl requests. It provides a REST API for submitting crawl requests and publishes them to Kafka for processing.
+The Gateway Service is the primary entry point for all client interactions within the web crawling ecosystem. It is a highly scalable and resilient service that orchestrates the flow of crawl requests, manages their state, and communicates with other backend services in real-time.
 
-## Architecture
+This service is built using a **Hexagonal Architecture** (Ports and Adapters), which decouples the core business logic from the infrastructure, making it easy to test, maintain, and extend.
 
-### Kafka Messaging
+## Documentation
 
-The application uses a centralized Kafka client service to manage all Kafka connections. This ensures:
+This README provides a high-level overview of the project. For detailed information on specific topics, please refer to the documentation in the `docs` directory:
 
-- **Single Kafka Instance**: All publishers and consumers share the same Kafka client
-- **Resource Efficiency**: Reduces connection overhead and memory usage
-- **Centralized Management**: Connection lifecycle is managed in one place
-- **Dependency Injection**: Easy to inject and mock for testing
+- **[Getting Started](./docs/getting-started.md)**: A step-by-step guide to setting up your development environment and running the application.
+- **[Architecture](./docs/architecture.md)**: A deep dive into the hexagonal architecture, its components, and how they interact.
+- **[Communication Protocols](./docs/protocols.md)**: Detailed information on the supported communication protocols (WebSocket and Kafka), including message formats and topic names.
+- **[Extensibility Guide](./docs/extensibility.md)**: Instructions on how to add new features or modify existing ones.
+- **[Configuration Guide](./docs/configuration.md)**: A guide to configuring the service using environment variables and configuration files.
 
-### Key Components
+## Getting Started
 
-#### KafkaClientService
+To get the service up and running, follow the instructions in the **[Getting Started](./docs/getting-started.md)** guide.
 
-- Manages a single Kafka instance
-- Provides producer and consumer factories
-- Handles connection lifecycle (connect/disconnect)
-- Tracks connection state
+## Key Features
 
-#### KafkaPublisherBase
-
-- Abstract base class for all Kafka publishers
-- Handles message publishing with proper error handling
-- Automatically manages connection state
-- Provides consistent logging
-
-#### KafkaConsumerBase
-
-- Abstract base class for all Kafka consumers
-- Handles message consumption with proper error handling
-- Manages subscription and message processing
-- Provides consistent logging
-
-## Usage
-
-### Creating a Publisher
-
-```typescript
-import { KafkaPublisherBase } from './infrastructure/messaging/kafka-publisher.base';
-import { kafkaClientService } from './infrastructure/messaging/kafka-client.service';
-
-export class MyPublisher extends KafkaPublisherBase {
-  constructor() {
-    super(kafkaClientService, 'my-topic');
-  }
-
-  public async publishMyMessage(data: any): Promise<void> {
-    const message = {
-      data,
-      timestamp: new Date().toISOString(),
-    };
-
-    const headers = {
-      'message-type': 'my_message',
-      source: 'gateway',
-    };
-
-    await this.publishMessage(message, 'my-key', headers);
-  }
-}
-```
-
-### Creating a Consumer
-
-```typescript
-import { KafkaConsumerBase } from './infrastructure/messaging/kafka-consumer.base';
-import { kafkaClientService } from './infrastructure/messaging/kafka-client.service';
-
-export class MyConsumer extends KafkaConsumerBase {
-  constructor() {
-    super(kafkaClientService, 'my-topic', 'my-consumer-group');
-  }
-
-  public async start(): Promise<void> {
-    await this.startConsumer(async (message) => {
-      await this.handleMessage(message);
-    });
-  }
-
-  public async stop(): Promise<void> {
-    await this.stopConsumer();
-  }
-
-  private async handleMessage(message: any): Promise<void> {
-    // Process the message
-    console.log('Received message:', message);
-  }
-}
-```
-
-## Configuration
-
-Kafka configuration is managed in `src/config/kafka.ts`:
-
-```typescript
-export const kafkaConfig = {
-  clientId: process.env.KAFKA_CLIENT_ID || 'gateway-crawl-request-publisher',
-  brokers: (process.env.KAFKA_BROKERS || 'localhost:9092').split(','),
-  // ... other configuration
-};
-```
-
-## Environment Variables
-
-- `KAFKA_CLIENT_ID`: Kafka client identifier
-- `KAFKA_BROKERS`: Comma-separated list of Kafka brokers
-- `KAFKA_CRAWL_REQUEST_TOPIC`: Topic for crawl requests
-- `KAFKA_CRAWL_RESPONSE_TOPIC`: Topic for crawl responses
-
-## Testing
-
-The application includes comprehensive tests for the Kafka messaging components:
-
-- `KafkaClientService` tests
-- `KafkaPublisherBase` tests
-- `KafkaConsumerBase` tests
-- Publisher implementation tests
-
-Run tests with:
-
-```bash
-npm test
-```
-
-## Lifecycle Management
-
-The application manages Kafka connection lifecycle during startup and shutdown:
-
-1. **Startup**: Connects to Kafka before starting the HTTP server
-2. **Shutdown**: Disconnects from Kafka during graceful shutdown
-3. **Error Handling**: Comprehensive error handling and logging
-
-## Benefits
-
-- **Resource Efficiency**: Single Kafka client instead of multiple instances
-- **Centralized Configuration**: All Kafka settings in one place
-- **Better Error Handling**: Comprehensive logging and error management
-- **Lifecycle Management**: Proper connection handling during app startup/shutdown
-- **Testability**: Easy to mock and test individual components
-- **Consistency**: Standardized patterns for publishers and consumers
+- **Real-time Communication**: Exposes a WebSocket API for bidirectional communication with clients.
+- **Asynchronous Processing**: Uses Kafka for asynchronous messaging with backend services, ensuring scalability and resilience.
+- **State Management**: Tracks the state of each crawl request in a Redis database.
+- **Decoupled Architecture**: Follows the Hexagonal Architecture pattern for a modular and testable codebase.
+- **Extensible Design**: Easy to add new features or swap out infrastructure components.

@@ -30,7 +30,12 @@ export class WebscrapeService implements IWebscrapePort {
     crawlRequest.setHash(hash);
     logger.info('Generated hash for request', { hash });
 
-    const crawlState = new CrawlState({ hash, connectionId });
+    const crawlState = new CrawlState({
+      hash,
+      connectionId,
+      url: data.url,
+      query: data.query,
+    });
     await this.crawlStateRepository.save(crawlState);
     logger.info('Saved crawl state', { hash, connectionId });
 

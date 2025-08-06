@@ -14,7 +14,17 @@ export class RedisCrawlStateRepositoryAdapter
     this.redis = new Redis({
       host: config.redis.host,
       port: config.redis.port,
-      db: config.redis.db,
+      password: config.redis.password,
+    });
+  }
+
+  public async connect(): Promise<void> {
+    // ioredis connects automatically, but we can listen for the connect event
+    this.redis.on('connect', () => {
+      logger.info('Successfully connected to Redis');
+    });
+    this.redis.on('error', (error) => {
+      logger.error('Redis connection error', { error });
     });
   }
 
@@ -36,7 +46,15 @@ export class RedisCrawlStateRepositoryAdapter
       return null;
     }
     const rawState = JSON.parse(value);
-    return new CrawlState(rawState);
+
+    // Re-hydrate the CrawlState entity with all properties
+    return new CrawlState({
+      hash: rawState.hash,
+      connectionId: rawState.connectionId,
+      url: rawState.url,
+      query: rawState.query,
+      createdAt: new Date(rawState.createdAt),
+    });
   }
 
   async delete(hash: string): Promise<void> {
