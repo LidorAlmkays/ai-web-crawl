@@ -11,7 +11,7 @@ OTEL Collector (Central Hub)
     ↓
 ├── Logs → Loki
 ├── Metrics → Prometheus (via scraping)
-└── Traces → Jaeger
+└── Traces → Tempo
     ↓
 All data accessible through Grafana
 ```
@@ -47,15 +47,6 @@ All data accessible through Grafana
 - **Data**: `data/prometheus/`
 - **Key Feature**: Scrapes from OTEL Collector, not directly from Task Manager
 
-### 4. Jaeger
-
-- **Purpose**: Distributed tracing and trace visualization (receives traces from OTEL Collector)
-- **Ports**:
-  - 16686 (UI)
-  - 14268 (HTTP collector)
-  - 14250 (gRPC collector)
-- **Data**: `data/jaeger/`
-
 ### 5. Grafana
 
 - **Purpose**: Unified visualization and dashboards for all observability data
@@ -65,13 +56,13 @@ All data accessible through Grafana
 - **Features**:
   - Metrics visualization (Prometheus)
   - Log exploration (Loki)
-  - Trace visualization (Jaeger)
+  - Trace visualization (Tempo)
   - Unified dashboards
 
 ## Key Benefits
 
 1. **Centralized Data Collection**: OTEL Collector is the single point of data collection
-2. **Backend Independence**: Can easily switch between different backends (Loki, Prometheus, Jaeger)
+2. **Backend Independence**: Can easily switch between different backends (Loki, Prometheus, Tempo)
 3. **No External Dependencies**: Task Manager doesn't need to expose metrics endpoints
 4. **Unified Configuration**: All data flow configuration in one place
 5. **Scalability**: Easy to add more services or backends
@@ -96,7 +87,7 @@ docker-compose ps
 docker-compose logs otel-collector
 docker-compose logs loki
 docker-compose logs prometheus
-docker-compose logs jaeger
+
 docker-compose logs grafana
 ```
 
@@ -105,7 +96,6 @@ docker-compose logs grafana
 - **Grafana (Unified Dashboard)**: http://localhost:3001 (admin/admin)
 - **Prometheus**: http://localhost:9090
 - **Loki**: http://localhost:3100
-- **Jaeger**: http://localhost:16686
 
 ## Configuration
 
@@ -124,7 +114,7 @@ All data flow is configured in the OTEL Collector:
 
 1. **Logs**: Task Manager → OTEL Collector → Loki
 2. **Metrics**: Task Manager → OTEL Collector → Prometheus (scraped)
-3. **Traces**: Task Manager → OTEL Collector → Jaeger
+3. **Traces**: Task Manager → OTEL Collector → Tempo
 
 ### Grafana Data Sources
 
@@ -140,8 +130,6 @@ All data sources are automatically provisioned:
    - URL: `http://loki:3100`
    - Purpose: Log exploration (via OTEL Collector)
 
-3. **Jaeger**:
-   - URL: `http://jaeger:16686`
    - Purpose: Trace visualization (via OTEL Collector)
 
 ### Pre-configured Dashboards
@@ -184,10 +172,10 @@ curl "http://localhost:9090/api/v1/query?query=increase(task_manager_tasks_creat
 curl "http://localhost:3100/loki/api/v1/query_range?query={service_name=\"task-manager\"}&start=$(date -d '5 minutes ago' +%s)000000000&end=$(date +%s)000000000&step=1s"
 ```
 
-### Test Jaeger Traces
+### Test Tempo Traces
 
 ```bash
-# Jaeger UI is available at http://localhost:16686
+# Tempo UI is available at http://localhost:3200
 # You can search for traces by service name, operation, or tags
 ```
 
@@ -241,11 +229,11 @@ curl "http://localhost:3100/loki/api/v1/query_range?query={service_name=\"task-m
    - Verify Loki is running: `docker logs loki`
    - Check Loki configuration
 
-4. **Jaeger not receiving traces**:
+4. **Tempo not receiving traces**:
 
    - Check OTEL Collector logs
-   - Verify Jaeger is running: `docker logs jaeger`
-   - Check Jaeger configuration
+   - Verify Tempo is running: `docker logs tempo`
+   - Check Tempo configuration
 
 5. **Grafana data sources not working**:
    - Check data source URLs in provisioning
@@ -257,7 +245,7 @@ curl "http://localhost:3100/loki/api/v1/query_range?query={service_name=\"task-m
 - **OTEL Collector**: `docker logs otel-collector`
 - **Loki**: `docker logs loki`
 - **Prometheus**: `docker logs prometheus`
-- **Jaeger**: `docker logs jaeger`
+- **Tempo**: `docker logs tempo`
 - **Grafana**: `docker logs grafana`
 
 ## Data Persistence
@@ -266,7 +254,7 @@ All data is persisted in the `data/` directory:
 
 - `data/loki/` - Loki log storage
 - `data/prometheus/` - Prometheus metrics storage
-- `data/jaeger/` - Jaeger trace storage
+- `data/tempo/` - Tempo trace storage
 - `data/grafana/` - Grafana dashboards and configuration
 
 ## Scaling
@@ -275,7 +263,7 @@ For production deployments, consider:
 
 1. **Loki**: Use external storage (S3, GCS) instead of filesystem
 2. **Prometheus**: Use remote storage (Thanos, Cortex)
-3. **Jaeger**: Use external storage (Elasticsearch, Cassandra)
+3. **Tempo**: Use external storage (S3, GCS, Azure Blob)
 4. **OTEL Collector**: Deploy multiple instances behind a load balancer
 5. **Grafana**: Use external database for configuration persistence
 
@@ -283,7 +271,7 @@ For production deployments, consider:
 
 For production deployments:
 
-1. Enable authentication in Loki, Prometheus, and Jaeger
+1. Enable authentication in Loki, Prometheus, and Tempo
 2. Configure all services with TLS
 3. Use secrets for sensitive configuration
 4. Restrict network access to observability ports

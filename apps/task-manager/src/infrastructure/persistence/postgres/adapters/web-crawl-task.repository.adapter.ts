@@ -3,6 +3,8 @@ import { WebCrawlTask } from '../../../../domain/entities/web-crawl-task.entity'
 import { TaskStatus } from '../../../../common/enums/task-status.enum';
 import { Pool } from 'pg';
 import { logger } from '../../../../common/utils/logger';
+import { TraceManager } from '../../../../common/utils/tracing/trace-manager';
+import { TraceAttributes } from '../../../../common/utils/tracing/trace-attributes';
 
 /**
  * Web Crawl Task Repository Adapter
@@ -21,6 +23,8 @@ import { logger } from '../../../../common/utils/logger';
 export class WebCrawlTaskRepositoryAdapter
   implements IWebCrawlTaskRepositoryPort
 {
+  private traceManager = TraceManager.getInstance();
+
   /**
    * Creates a new WebCrawlTaskRepositoryAdapter instance
    *
@@ -46,45 +50,98 @@ export class WebCrawlTaskRepositoryAdapter
    * ```
    */
   public async createWebCrawlTask(task: WebCrawlTask): Promise<WebCrawlTask> {
-    const operation = 'createWebCrawlTask';
-    const sql = 'SELECT create_web_crawl_task($1, $2, $3, $4, $5, $6, $7, $8)';
-    const params = [
-      task.id,
-      task.userEmail,
-      task.userQuery,
-      task.originalUrl,
-      task.receivedAt.toISOString(),
-      task.status,
-      task.createdAt.toISOString(),
-      task.updatedAt.toISOString(),
-    ];
+    return this.traceManager.traceOperation(
+      'database_create_web_crawl_task',
+      async () => {
+        const operation = 'createWebCrawlTask';
+        const sql =
+          'SELECT create_web_crawl_task($1, $2, $3, $4, $5, $6, $7, $8)';
+        const params = [
+          task.id,
+          task.userEmail,
+          task.userQuery,
+          task.originalUrl,
+          task.receivedAt.toISOString(),
+          task.status,
+          task.createdAt.toISOString(),
+          task.updatedAt.toISOString(),
+        ];
 
-    logger.debug('Executing createWebCrawlTask procedure', {
-      taskId: task.id,
-      operation,
-      sql,
-      params: this.sanitizeParams(params),
-    });
+        // Set database operation attributes
+        this.traceManager.setAttributes(
+          TraceAttributes.createDatabaseAttributes(
+            'INSERT',
+            'web_crawl_tasks',
+            sql,
+            {
+              'task.id': task.id,
+              'user.email': task.userEmail,
+              'database.operation': operation,
+            }
+          )
+        );
 
-    try {
-      await this.pool.query(sql, params);
+        logger.debug('Executing createWebCrawlTask procedure', {
+          taskId: task.id,
+          operation,
+          sql,
+          params: this.sanitizeParams(params),
+        });
 
-      logger.debug('Web crawl task created successfully', {
-        taskId: task.id,
-        operation,
-        status: task.status,
-      });
-      return task;
-    } catch (error) {
-      this.logDatabaseError(operation, error, {
-        taskId: task.id,
-        sql,
-        params: this.sanitizeParams(params),
-        userEmail: task.userEmail,
-        status: task.status,
-      });
-      throw error;
-    }
+        try {
+          // Add trace event for query execution
+          this.traceManager.addEvent('database_query_executing', {
+            taskId: task.id,
+            operation,
+            'query.type': 'stored_procedure',
+          });
+
+          await this.pool.query(sql, params);
+
+          // Add trace event for successful query
+          this.traceManager.addEvent('database_query_successful', {
+            taskId: task.id,
+            operation,
+            'query.duration': Date.now(),
+          });
+
+          logger.debug('Web crawl task created successfully', {
+            taskId: task.id,
+            operation,
+            status: task.status,
+          });
+          return task;
+        } catch (error) {
+          // Add error attributes to trace
+          this.traceManager.setAttributes(
+            TraceAttributes.createErrorAttributes(
+              error as Error,
+              'DATABASE_ERROR',
+              {
+                'task.id': task.id,
+                'database.operation': operation,
+                'database.table': 'web_crawl_tasks',
+              }
+            )
+          );
+
+          this.logDatabaseError(operation, error, {
+            taskId: task.id,
+            sql,
+            params: this.sanitizeParams(params),
+            userEmail: task.userEmail,
+            status: task.status,
+          });
+          throw error;
+        }
+      },
+      {
+        [TraceAttributes.DATABASE_OPERATION]: 'INSERT',
+        [TraceAttributes.DATABASE_TABLE]: 'web_crawl_tasks',
+        'task.id': task.id,
+        'user.email': task.userEmail,
+      }
+    );
   }
 
   /**

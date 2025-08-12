@@ -67,9 +67,9 @@
   "scripts": {
     "test": "jest",
     "test:watch": "jest --watch",
-    "test:coverage": "jest --coverage"
+    "test:coverage": "jest --coverage",
+    "test:tracing": "node scripts/run-tracing-test.js"
   },
-  "dependencies": {
-    "@opentelemetry/exporter-logs-otlp-http": "^0.203.0"
-  }
+  "dependencies": {},
+  "devDependencies": {}
 }

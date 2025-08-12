@@ -3,6 +3,8 @@ import { WebCrawlTask } from '../../domain/entities/web-crawl-task.entity';
 import { TaskStatus } from '../../common/enums/task-status.enum';
 import { IWebCrawlTaskRepositoryPort } from '../../infrastructure/ports/web-crawl-task-repository.port';
 import { logger } from '../../common/utils/logger';
+import { TraceManager } from '../../common/utils/tracing/trace-manager';
+import { TraceAttributes } from '../../common/utils/tracing/trace-attributes';
 
 /**
  * WebCrawlTaskManager Service
@@ -18,6 +20,8 @@ import { logger } from '../../common/utils/logger';
  * IWebCrawlTaskManagerPort interface.
  */
 export class WebCrawlTaskManagerService implements IWebCrawlTaskManagerPort {
+  private traceManager = TraceManager.getInstance();
+
   /**
    * Creates a new WebCrawlTaskManagerService instance
    *
@@ -60,32 +64,69 @@ export class WebCrawlTaskManagerService implements IWebCrawlTaskManagerPort {
     userQuery: string,
     originalUrl: string
   ): Promise<WebCrawlTask> {
-    logger.debug('Creating new web crawl task', {
-      taskId,
-      userEmail,
-      userQuery,
-      originalUrl,
-    });
+    return this.traceManager.traceOperation(
+      'create_web_crawl_task',
+      async () => {
+        logger.debug('Creating new web crawl task', {
+          taskId,
+          userEmail,
+          userQuery,
+          originalUrl,
+        });
 
-    const task = WebCrawlTask.create(
-      taskId,
-      userEmail,
-      userQuery,
-      originalUrl,
-      new Date()
+        // Set trace attributes for task creation
+        this.traceManager.setAttributes(
+          TraceAttributes.createTaskAttributes(
+            taskId,
+            'new',
+            undefined,
+            originalUrl,
+            {
+              'user.email': userEmail,
+              'user.query': userQuery,
+              'business.operation': 'task_creation',
+            }
+          )
+        );
+
+        const task = WebCrawlTask.create(
+          taskId,
+          userEmail,
+          userQuery,
+          originalUrl,
+          new Date()
+        );
+
+        // Add trace event for domain entity creation
+        this.traceManager.addEvent('domain_entity_created', {
+          taskId,
+          status: task.status,
+        });
+
+        const createdTask =
+          await this.webCrawlTaskRepository.createWebCrawlTask(task);
+
+        // Add trace event for database persistence
+        this.traceManager.addEvent('task_persisted', {
+          taskId: createdTask.id,
+          status: createdTask.status,
+        });
+
+        logger.info('Web crawl task created successfully', {
+          taskId: createdTask.id,
+          userEmail: createdTask.userEmail,
+          status: createdTask.status,
+        });
+
+        return createdTask;
+      },
+      {
+        [TraceAttributes.BUSINESS_OPERATION]: 'create_web_crawl_task',
+        [TraceAttributes.BUSINESS_ENTITY]: 'web_crawl_task',
+        'task.id': taskId,
+        'user.email': userEmail,
+      }
     );
-
-    const createdTask = await this.webCrawlTaskRepository.createWebCrawlTask(
-      task
-    );
-
-    logger.info('Web crawl task created successfully', {
-      taskId: createdTask.id,
-      userEmail: createdTask.userEmail,
-      status: createdTask.status,
-    });
-
-    return createdTask;
   }
 
   /**
@@ -226,37 +267,91 @@ export class WebCrawlTaskManagerService implements IWebCrawlTaskManagerPort {
     status: TaskStatus,
     result?: string
   ): Promise<WebCrawlTask | null> {
-    logger.debug('Updating web crawl task status', {
-      taskId,
-      status,
-      hasResult: !!result,
-    });
+    return this.traceManager.traceOperation(
+      'update_web_crawl_task_status',
+      async () => {
+        logger.debug('Updating web crawl task status', {
+          taskId,
+          status,
+          hasResult: !!result,
+        });
 
-    const task = await this.webCrawlTaskRepository.findWebCrawlTaskById(taskId);
-    if (!task) {
-      logger.warn('Web crawl task not found for status update', { taskId });
-      return null;
-    }
+        // Set trace attributes for status update
+        this.traceManager.setAttributes(
+          TraceAttributes.createTaskAttributes(
+            taskId,
+            status,
+            undefined,
+            undefined,
+            {
+              'status.transition': status,
+              'result.size': result?.length || 0,
+              'business.operation': 'task_status_update',
+            }
+          )
+        );
 
-    // Update task based on status
-    if (status === TaskStatus.COMPLETED) {
-      task.markAsCompleted(result || 'Task completed successfully');
-    } else if (status === TaskStatus.ERROR) {
-      task.markAsError(result || 'Task failed with error');
-    } else if (status === TaskStatus.NEW) {
-      task.markAsStarted();
-    }
+        const task = await this.webCrawlTaskRepository.findWebCrawlTaskById(
+          taskId
+        );
+        if (!task) {
+          logger.warn('Web crawl task not found for status update', { taskId });
 
-    const updatedTask = await this.webCrawlTaskRepository.updateWebCrawlTask(
-      task
+          // Add trace event for task not found
+          this.traceManager.addEvent('task_not_found', {
+            taskId,
+            requestedStatus: status,
+          });
+
+          return null;
+        }
+
+        // Add trace event for task retrieval
+        this.traceManager.addEvent('task_retrieved', {
+          taskId,
+          currentStatus: task.status,
+          requestedStatus: status,
+        });
+
+        // Update task based on status
+        if (status === TaskStatus.COMPLETED) {
+          task.markAsCompleted(result || 'Task completed successfully');
+        } else if (status === TaskStatus.ERROR) {
+          task.markAsError(result || 'Task failed with error');
+        } else if (status === TaskStatus.NEW) {
+          task.markAsStarted();
+        }
+
+        // Add trace event for domain entity update
+        this.traceManager.addEvent('domain_entity_updated', {
+          taskId,
+          newStatus: task.status,
+          previousStatus: task.status, // Note: domain entity doesn't track previous status
+        });
+
+        const updatedTask =
+          await this.webCrawlTaskRepository.updateWebCrawlTask(task);
+
+        // Add trace event for database update
+        this.traceManager.addEvent('task_updated_in_database', {
+          taskId: updatedTask.id,
+          status: updatedTask.status,
+        });
+
+        logger.info('Web crawl task status updated successfully', {
+          taskId: updatedTask.id,
+          status: updatedTask.status,
+        });
+
+        return updatedTask;
+      },
+      {
+        [TraceAttributes.BUSINESS_OPERATION]: 'update_web_crawl_task_status',
+        [TraceAttributes.BUSINESS_ENTITY]: 'web_crawl_task',
+        'task.id': taskId,
+        'task.status': status,
+      }
     );
-
-    logger.info('Web crawl task status updated successfully', {
-      taskId: updatedTask.id,
-      status: updatedTask.status,
-    });
-
-    return updatedTask;
   }
 
   /**

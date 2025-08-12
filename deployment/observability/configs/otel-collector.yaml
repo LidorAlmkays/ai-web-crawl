@@ -37,8 +37,8 @@ exporters:
     send_timestamps: true
     metric_expiration: 180m
     enable_open_metrics: true
-  otlp/traces:
-    endpoint: 'tempo:4317'
+  otlp/tempo:
+    endpoint: tempo:4317
     tls:
       insecure: true
   otlphttp/loki:
@@ -51,7 +51,7 @@ service:
     traces:
       receivers: [otlp]
       processors: [batch, memory_limiter, resource]
-      exporters: [otlp/traces, debug]
+      exporters: [otlp/tempo, debug]
     logs:
       receivers: [otlp]
       processors: [batch, memory_limiter, resource]

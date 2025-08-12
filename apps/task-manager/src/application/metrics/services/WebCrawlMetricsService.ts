@@ -4,6 +4,7 @@ import {
   MetricsQueryParams,
 } from '../../../domain/types/metrics.types';
 import { metricsConfig } from '../../../config/metrics';
+import { TraceManager } from '../../../common/utils/tracing/trace-manager';
 
 /**
  * WebCrawlMetricsService
@@ -19,6 +20,8 @@ import { metricsConfig } from '../../../config/metrics';
  * - Configuration management for metrics collection
  */
 export class WebCrawlMetricsService {
+  private traceManager = TraceManager.getInstance();
+
   /**
    * Creates a new WebCrawlMetricsService instance
    *
@@ -39,8 +42,46 @@ export class WebCrawlMetricsService {
    * ```
    */
   async getMetrics(params?: MetricsQueryParams): Promise<WebCrawlMetrics> {
-    const hours = params?.hours || metricsConfig.defaultTimeRangeHours;
-    return this.metricsDataPort.getWebCrawlMetrics(hours);
+    return this.traceManager.traceOperation(
+      'metrics.get_web_crawl_metrics',
+      async () => {
+        const hours = params?.hours || metricsConfig.defaultTimeRangeHours;
+
+        // Set metrics query attributes
+        this.traceManager.setAttributes({
+          'business.operation': 'get_metrics',
+          'metrics.time_range_hours': hours,
+          'metrics.query_params': JSON.stringify(params || {}),
+        });
+
+        // Add trace event for metrics retrieval
+        this.traceManager.addEvent('metrics_retrieval_started', {
+          timeRangeHours: hours,
+          hasCustomParams: !!params,
+        });
+
+        const metrics = await this.metricsDataPort.getWebCrawlMetrics(hours);
+
+        // Add trace event for successful metrics retrieval
+        this.traceManager.addEvent('metrics_retrieved', {
+          newTasksCount: metrics.newTasksCount,
+          completedTasksCount: metrics.completedTasksCount,
+          errorTasksCount: metrics.errorTasksCount,
+          totalTasksCount:
+            metrics.newTasksCount +
+            metrics.completedTasksCount +
+            metrics.errorTasksCount,
+        });
+
+        return metrics;
+      },
+      {
+        'business.operation': 'get_web_crawl_metrics',
+        'business.entity': 'metrics',
+        'metrics.time_range_hours':
+          params?.hours || metricsConfig.defaultTimeRangeHours,
+      }
+    );
   }
 
   /**
@@ -63,18 +104,27 @@ export class WebCrawlMetricsService {
    * ```
    */
   async getPrometheusFormat(params?: MetricsQueryParams): Promise<string> {
-    const metrics = await this.getMetrics(params);
-    const hours = params?.hours || metricsConfig.defaultTimeRangeHours;
+    return this.traceManager.traceOperation(
+      'metrics.get_prometheus_format',
+      async () => {
+        const metrics = await this.getMetrics(params);
+        const hours = params?.hours || metricsConfig.defaultTimeRangeHours;
 
-    return `# HELP web_crawl_new_tasks_total Number of new web crawl tasks in the last ${hours}h
+        // Add trace event for Prometheus format generation
+        this.traceManager.addEvent('prometheus_format_generation', {
+          timeRangeHours: hours,
+          metricsCount: 4, // Number of metrics in the output
+        });
+
+        const prometheusFormat = `# HELP web_crawl_new_tasks_total Number of new web crawl tasks in the last ${hours}h
 # TYPE web_crawl_new_tasks_total counter
 web_crawl_new_tasks_total{time_range="${hours}h"} ${metrics.newTasksCount}
 
 # HELP web_crawl_completed_tasks_total Number of completed web crawl tasks in the last ${hours}h
 # TYPE web_crawl_completed_tasks_total counter
 web_crawl_completed_tasks_total{time_range="${hours}h"} ${
-      metrics.completedTasksCount
-    }
+          metrics.completedTasksCount
+        }
 
 # HELP web_crawl_error_tasks_total Number of error web crawl tasks in the last ${hours}h
 # TYPE web_crawl_error_tasks_total counter
@@ -83,8 +133,30 @@ web_crawl_error_tasks_total{time_range="${hours}h"} ${metrics.errorTasksCount}
 # HELP web_crawl_metrics_timestamp Timestamp of the last metrics update
 # TYPE web_crawl_metrics_timestamp gauge
 web_crawl_metrics_timestamp{time_range="${hours}h"} ${Math.floor(
-      new Date(metrics.timestamp).getTime() / 1000
-    )}`;
+          new Date(metrics.timestamp).getTime() / 1000
+        )}`;
+
+        // Add trace event for successful format generation
+        this.traceManager.addEvent('prometheus_format_generated', {
+          outputLength: prometheusFormat.length,
+          metricsIncluded: [
+            'new_tasks',
+            'completed_tasks',
+            'error_tasks',
+            'timestamp',
+          ],
+        });
+
+        return prometheusFormat;
+      },
+      {
+        'business.operation': 'get_prometheus_format',
+        'business.entity': 'metrics',
+        'metrics.format': 'prometheus',
+        'metrics.time_range_hours':
+          params?.hours || metricsConfig.defaultTimeRangeHours,
+      }
+    );
   }
 
   /**
@@ -100,8 +172,33 @@ web_crawl_metrics_timestamp{time_range="${hours}h"} ${Math.floor(
    * ```
    */
   async getNewTasksCount(params?: MetricsQueryParams): Promise<number> {
-    const hours = params?.hours || metricsConfig.defaultTimeRangeHours;
-    return this.metricsDataPort.getNewTasksCount(hours);
+    return this.traceManager.traceOperation(
+      'metrics.get_new_tasks_count',
+      async () => {
+        const hours = params?.hours || metricsConfig.defaultTimeRangeHours;
+
+        // Add trace event for new tasks count retrieval
+        this.traceManager.addEvent('new_tasks_count_retrieval', {
+          timeRangeHours: hours,
+        });
+
+        const count = await this.metricsDataPort.getNewTasksCount(hours);
+
+        // Add trace event for successful count retrieval
+        this.traceManager.addEvent('new_tasks_count_retrieved', {
+          count,
+          timeRangeHours: hours,
+        });
+
+        return count;
+      },
+      {
+        'business.operation': 'get_new_tasks_count',
+        'business.entity': 'metrics',
+        'metrics.time_range_hours':
+          params?.hours || metricsConfig.defaultTimeRangeHours,
+      }
+    );
   }
 
   /**
@@ -117,8 +214,33 @@ web_crawl_metrics_timestamp{time_range="${hours}h"} ${Math.floor(
    * ```
    */
   async getCompletedTasksCount(params?: MetricsQueryParams): Promise<number> {
-    const hours = params?.hours || metricsConfig.defaultTimeRangeHours;
-    return this.metricsDataPort.getCompletedTasksCount(hours);
+    return this.traceManager.traceOperation(
+      'metrics.get_completed_tasks_count',
+      async () => {
+        const hours = params?.hours || metricsConfig.defaultTimeRangeHours;
+
+        // Add trace event for completed tasks count retrieval
+        this.traceManager.addEvent('completed_tasks_count_retrieval', {
+          timeRangeHours: hours,
+        });
+
+        const count = await this.metricsDataPort.getCompletedTasksCount(hours);
+
+        // Add trace event for successful count retrieval
+        this.traceManager.addEvent('completed_tasks_count_retrieved', {
+          count,
+          timeRangeHours: hours,
+        });
+
+        return count;
+      },
+      {
+        'business.operation': 'get_completed_tasks_count',
+        'business.entity': 'metrics',
+        'metrics.time_range_hours':
+          params?.hours || metricsConfig.defaultTimeRangeHours,
+      }
+    );
   }
 
   /**
@@ -134,8 +256,33 @@ web_crawl_metrics_timestamp{time_range="${hours}h"} ${Math.floor(
    * ```
    */
   async getErrorTasksCount(params?: MetricsQueryParams): Promise<number> {
-    const hours = params?.hours || metricsConfig.defaultTimeRangeHours;
-    return this.metricsDataPort.getErrorTasksCount(hours);
+    return this.traceManager.traceOperation(
+      'metrics.get_error_tasks_count',
+      async () => {
+        const hours = params?.hours || metricsConfig.defaultTimeRangeHours;
+
+        // Add trace event for error tasks count retrieval
+        this.traceManager.addEvent('error_tasks_count_retrieval', {
+          timeRangeHours: hours,
+        });
+
+        const count = await this.metricsDataPort.getErrorTasksCount(hours);
+
+        // Add trace event for successful count retrieval
+        this.traceManager.addEvent('error_tasks_count_retrieved', {
+          count,
+          timeRangeHours: hours,
+        });
+
+        return count;
+      },
+      {
+        'business.operation': 'get_error_tasks_count',
+        'business.entity': 'metrics',
+        'metrics.time_range_hours':
+          params?.hours || metricsConfig.defaultTimeRangeHours,
+      }
+    );
   }
 
   /**

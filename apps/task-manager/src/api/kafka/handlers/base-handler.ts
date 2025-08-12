@@ -4,6 +4,9 @@ import { logger } from '../../../common/utils/logger';
 import { getStackedErrorHandler } from '../../../common/utils/stacked-error-handler';
 import { validateDto } from '../../../common/utils/validation';
 import { v4 as uuidv4 } from 'uuid';
+import { TraceManager } from '../../../common/utils/tracing/trace-manager';
+import { TraceContextManager } from '../../../common/utils/tracing/trace-context';
+import { TraceAttributes } from '../../../common/utils/tracing/trace-attributes';
 
 /**
  * Base handler class with common functionality
@@ -11,6 +14,8 @@ import { v4 as uuidv4 } from 'uuid';
  * Simplified approach - no complex validation or deduplication
  */
 export abstract class BaseHandler implements IHandler {
+  protected traceManager = TraceManager.getInstance();
+
   /**
    * Process a Kafka message
    * @param message - The full Kafka message payload
@@ -410,5 +415,102 @@ export abstract class BaseHandler implements IHandler {
     }
 
     return String(validationErrors);
+  }
+
+  /**
+   * Extract trace context from Kafka message headers
+   *
+   * @param message - The Kafka message payload
+   * @returns Trace context or null if not found
+   */
+  protected extractTraceContext(message: EachMessagePayload): any {
+    const headers = this.extractHeaders(message.message.headers);
+    return TraceContextManager.extractFromKafkaHeaders(headers);
+  }
+
+  /**
+   * Create Kafka message trace attributes
+   *
+   * @param message - The Kafka message payload
+   * @param operation - The operation being performed
+   * @returns Trace attributes for the Kafka message
+   */
+  protected createKafkaTraceAttributes(
+    message: EachMessagePayload,
+    operation: string
+  ): Record<string, any> {
+    const headers = this.extractHeaders(message.message.headers);
+    const taskId = headers.id || headers.taskId;
+    const eventType = this.extractEventType(message);
+
+    return TraceAttributes.createKafkaAttributes(
+      message.topic,
+      message.partition,
+      Number(message.message.offset),
+      message.message.value?.length,
+      {
+        [TraceAttributes.TASK_ID]: taskId,
+        [TraceAttributes.BUSINESS_OPERATION]: operation,
+        'event.type': eventType,
+        'message.timestamp': message.message.timestamp,
+      }
+    );
+  }
+
+  /**
+   * Trace Kafka message processing with distributed context support
+   *
+   * @param message - The Kafka message payload
+   * @param operation - The operation being performed
+   * @param handlerOperation - The async operation to trace
+   * @returns The result of the operation
+   */
+  protected async traceKafkaMessage<T>(
+    message: EachMessagePayload,
+    operation: string,
+    handlerOperation: () => Promise<T>
+  ): Promise<T> {
+    const traceContext = this.extractTraceContext(message);
+    const attributes = this.createKafkaTraceAttributes(message, operation);
+
+    if (traceContext) {
+      // Use distributed tracing with parent context
+      const spanContext = TraceContextManager.toSpanContext(traceContext);
+      return this.traceManager.traceOperationWithContext(
+        `kafka.${operation}`,
+        spanContext,
+        handlerOperation,
+        attributes
+      );
+    } else {
+      // Use local tracing
+      return this.traceManager.traceOperation(
+        `kafka.${operation}`,
+        handlerOperation,
+        attributes
+      );
+    }
+  }
+
+  /**
+   * Add trace event to current span
+   *
+   * @param name - Event name
+   * @param attributes - Event attributes
+   */
+  protected addTraceEvent(
+    name: string,
+    attributes?: Record<string, any>
+  ): void {
+    this.traceManager.addEvent(name, attributes);
+  }
+
+  /**
+   * Set trace attributes on current span
+   *
+   * @param attributes - Attributes to set
+   */
+  protected setTraceAttributes(attributes: Record<string, any>): void {
+    this.traceManager.setAttributes(attributes);
   }
 }

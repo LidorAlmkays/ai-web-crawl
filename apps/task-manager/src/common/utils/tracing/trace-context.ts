@@ -72,7 +72,7 @@ export class TraceContextManager {
   static injectIntoKafkaHeaders(context: SpanContext): Record<string, any> {
     return {
       traceparent: this.formatW3CTraceContext(context),
-      tracestate: context.traceState?.serialize() || '',
+      tracestate: context.traceState?.toString() || '',
     };
   }
 
@@ -85,7 +85,7 @@ export class TraceContextManager {
   static injectIntoHttpHeaders(context: SpanContext): Record<string, any> {
     return {
       traceparent: this.formatW3CTraceContext(context),
-      tracestate: context.traceState?.serialize() || '',
+      tracestate: context.traceState?.toString() || '',
     };
   }
 
@@ -236,7 +236,7 @@ export class TraceContextManager {
       traceId: context.traceId,
       spanId: context.spanId,
       traceFlags: context.traceFlags,
-      traceState: (context.traceState as any) || '',
+      traceState: undefined, // Don't set traceState to avoid serialization issues
     };
   }
 }
