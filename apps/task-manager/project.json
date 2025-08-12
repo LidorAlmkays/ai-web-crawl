@@ -1,0 +1,20 @@
+{
+  "projects": {
+    "task-manager": {
+      "serve": {
+        "executor": "@nx/js:node",
+        "defaultConfiguration": "development",
+        "options": {
+          "buildTarget": "task-manager:build",
+          "main": "apps/task-manager/src/server.ts"
+        },
+        "configurations": {
+          "development": {
+            "buildTarget": "task-manager:build",
+            "main": "apps/task-manager/src/server.ts"
+          }
+        }
+      }
+    }
+  }
+}

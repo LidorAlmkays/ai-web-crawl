@@ -1,0 +1,75 @@
+{
+  "name": "@web-crawling/task-manager",
+  "version": "0.0.1",
+  "private": true,
+  "nx": {
+    "name": "task-manager",
+    "targets": {
+      "build": {
+        "executor": "@nx/esbuild:esbuild",
+        "outputs": [
+          "{options.outputPath}"
+        ],
+        "defaultConfiguration": "production",
+        "options": {
+          "platform": "node",
+          "outputPath": "apps/task-manager/dist",
+          "format": [
+            "cjs"
+          ],
+          "bundle": false,
+          "main": "apps/task-manager/src/server.ts",
+          "tsConfig": "apps/task-manager/tsconfig.app.json",
+          "assets": [
+            "apps/task-manager/src/assets"
+          ],
+          "esbuildOptions": {
+            "sourcemap": true,
+            "outExtension": {
+              ".js": ".js"
+            }
+          }
+        },
+        "configurations": {
+          "development": {},
+          "production": {
+            "esbuildOptions": {
+              "sourcemap": false,
+              "outExtension": {
+                ".js": ".js"
+              }
+            }
+          }
+        }
+      },
+      "serve": {
+        "continuous": true,
+        "executor": "@nx/js:node",
+        "defaultConfiguration": "development",
+        "dependsOn": [
+          "build"
+        ],
+        "options": {
+          "buildTarget": "task-manager:build",
+          "runBuildTargetDependencies": false
+        },
+        "configurations": {
+          "development": {
+            "buildTarget": "task-manager:build:development"
+          },
+          "production": {
+            "buildTarget": "task-manager:build:production"
+          }
+        }
+      }
+    }
+  },
+  "scripts": {
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage"
+  },
+  "dependencies": {
+    "@opentelemetry/exporter-logs-otlp-http": "^0.203.0"
+  }
+}

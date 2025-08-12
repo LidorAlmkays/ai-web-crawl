@@ -29,7 +29,8 @@
           "buildDepsName": "build-deps",
           "watchDepsName": "watch-deps"
         }
-      }
+      },
+      "exclude": ["libs/utils/*"]
     },
     {
       "plugin": "@nx/eslint/plugin",
@@ -48,6 +49,15 @@
         "apps/gateway-e2e/**/*",
         "apps/gateway-e2e/**/*"
       ]
+    },
+    {
+      "plugin": "@nx/js/typescript",
+      "include": ["libs/utils/*"],
+      "options": {
+        "typecheck": {
+          "targetName": "typecheck"
+        }
+      }
     }
   ],
   "targetDefaults": {

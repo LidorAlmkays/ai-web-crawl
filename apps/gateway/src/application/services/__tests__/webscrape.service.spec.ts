@@ -1,50 +1,57 @@
 import { WebscrapeService } from '../webscrape.service';
-import { IHashPort } from '../../ports/hash.port';
-import { ICrawlStateRepositoryPort } from '../../../infrastructure/ports/crawl-state-repository.port';
+import { ICrawlRequestRepositoryPort } from '../../ports/crawl-request-repository.port';
 import { ICrawlRequestPublisherPort } from '../../../infrastructure/ports/crawl-request-publisher.port';
-import { CrawlState } from '../../../domain/entities/crawl-state.entity';
 import { CrawlRequest } from '../../../domain/entities/crawl-request.entity';
 
 describe('WebscrapeService', () => {
   let webscrapeService: WebscrapeService;
-  let hashService: IHashPort;
-  let crawlStateRepository: ICrawlStateRepositoryPort;
+  let crawlRequestRepository: ICrawlRequestRepositoryPort;
   let crawlRequestPublisher: ICrawlRequestPublisherPort;
 
   beforeEach(() => {
-    hashService = {
-      generate: jest.fn().mockReturnValue('mocked-hash'),
-    };
-    crawlStateRepository = {
+    crawlRequestRepository = {
       save: jest.fn(),
-      findByHash: jest.fn(),
-      delete: jest.fn(),
+      update: jest.fn(),
+      findById: jest.fn(),
+      findByEmail: jest.fn(),
     };
     crawlRequestPublisher = {
       publish: jest.fn(),
     };
 
     webscrapeService = new WebscrapeService(
-      hashService,
-      crawlStateRepository,
+      crawlRequestRepository,
       crawlRequestPublisher
     );
   });
 
-  it('should process a webscrape event correctly', async () => {
-    const event = { query: 'test', url: 'http://example.com' };
-    const connectionId = 'conn-123';
+  it('should save the crawl request and then publish it', async () => {
+    const event = {
+      url: 'http://example.com',
+      email: 'test@example.com',
+    };
 
-    await webscrapeService.execute(event, connectionId);
+    await webscrapeService.execute(event);
 
-    expect(hashService.generate).toHaveBeenCalledWith(
-      'test:http://example.com'
-    );
-    expect(crawlStateRepository.save).toHaveBeenCalledWith(
-      expect.any(CrawlState)
-    );
-    expect(crawlRequestPublisher.publish).toHaveBeenCalledWith(
+    // Check that save was called first
+    expect(crawlRequestRepository.save).toHaveBeenCalledWith(
       expect.any(CrawlRequest)
     );
+
+    // Check that publish was called second
+    expect(crawlRequestPublisher.publish).toHaveBeenCalledWith(
+      expect.objectContaining({
+        url: event.url,
+        email: event.email,
+        status: 'pending',
+      })
+    );
+
+    // Ensure the calls happened in the correct order
+    const saveOrder = (crawlRequestRepository.save as jest.Mock).mock
+      .invocationCallOrder[0];
+    const publishOrder = (crawlRequestPublisher.publish as jest.Mock).mock
+      .invocationCallOrder[0];
+    expect(saveOrder).toBeLessThan(publishOrder);
   });
 });

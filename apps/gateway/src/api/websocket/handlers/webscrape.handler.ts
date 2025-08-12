@@ -1,48 +1,43 @@
 import { IWebscrapePort } from '../../../application/ports/webscrape.port';
-import { IWebSocketConnection, IWebSocketMessage } from '../../../common/types';
 import { logger } from '../../../common/utils/logger';
 import { validateDto } from '../../../common/utils/validation';
 import { SubmitCrawlRequestDto } from '../dtos/submit-crawl-request.dto';
+import { WebSocket } from 'ws';
 
 export class WebscrapeHandler {
   constructor(private readonly webscrapeService: IWebscrapePort) {}
 
-  async handle(
-    connection: IWebSocketConnection,
-    message: IWebSocketMessage
-  ): Promise<void> {
-    const { data } = message;
-    logger.info('Received webscrape request', {
-      connectionId: connection.id,
-      data,
-    });
+  async handle(email: string, data: any, connection: WebSocket): Promise<void> {
+    logger.info(`Received webscrape request for user ${email}`, { data });
 
-    // 1. Validate DTO from the WebSocket message
     const {
       isValid,
       data: validatedData,
       errorMessage,
     } = await validateDto(SubmitCrawlRequestDto, data);
+
     if (!isValid || !validatedData) {
-      logger.warn('Invalid webscrape request payload', { error: errorMessage });
+      logger.warn(`Invalid webscrape request payload for user ${email}`, {
+        error: errorMessage,
+      });
+      // Optionally send an error message back to the client
+      connection.send(
+        JSON.stringify({
+          event: 'error',
+          message: `Invalid payload: ${errorMessage}`,
+        })
+      );
       return;
     }
 
-    // 2. Create the plain object for the application service
-    const requestData = {
-      query: validatedData.query,
-      url: validatedData.url,
-      userId: connection.userId,
-    };
-
-    // 3. Execute application service
     try {
-      await this.webscrapeService.execute(requestData, connection.id);
-      logger.info('Webscrape service executed successfully', {
-        connectionId: connection.id,
+      await this.webscrapeService.execute({
+        url: validatedData.url,
+        email: email,
       });
+      logger.info(`Webscrape service executed successfully for user ${email}`);
     } catch (error) {
-      logger.error('Error executing webscrape service', {
+      logger.error(`Error executing webscrape service for user ${email}`, {
         error: error instanceof Error ? error.message : 'Unknown error',
       });
     }

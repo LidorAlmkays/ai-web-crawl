@@ -1,46 +1,37 @@
+import { CrawlStatus } from '../enums/crawl-status.enum';
+import { randomUUID } from 'crypto';
+
 export class CrawlRequest {
+  public readonly id: string;
   public readonly url: string;
-  public readonly query: string;
-  public readonly userId?: string;
+  public readonly email: string;
+  public status: CrawlStatus;
+  public result?: any;
   public readonly createdAt: Date;
-  private hash: string | null = null;
 
   constructor(props: {
+    id?: string;
     url: string;
-    query: string;
-    userId?: string;
+    email: string;
+    status?: CrawlStatus;
+    result?: any;
     createdAt?: Date;
   }) {
+    this.id = props.id || randomUUID();
     this.url = props.url;
-    this.query = props.query;
-    this.userId = props.userId;
+    this.email = props.email;
+    this.status = props.status || CrawlStatus.PENDING;
+    this.result = props.result;
     this.createdAt = props.createdAt || new Date();
-  }
-
-  public setHash(hash: string): void {
-    if (this.hash !== null) {
-      throw new Error('Hash has already been set and cannot be changed.');
-    }
-    this.hash = hash;
-  }
-
-  public getHash(): string {
-    if (this.hash === null) {
-      throw new Error('Hash has not been set.');
-    }
-    return this.hash;
-  }
-
-  public getHashableContent(): string {
-    return `${this.query}:${this.url}`;
   }
 
   public toJSON() {
     return {
+      id: this.id,
       url: this.url,
-      query: this.query,
-      hash: this.hash,
-      userId: this.userId,
+      email: this.email,
+      status: this.status,
+      result: this.result,
       createdAt: this.createdAt.toISOString(),
     };
   }

@@ -3,8 +3,5 @@
  * The API layer will call this port to initiate a webscrape.
  */
 export interface IWebscrapePort {
-  execute(
-    data: { query: string; url: string; userId?: string },
-    connectionId: string
-  ): Promise<void>;
+  execute(data: { url: string; email: string }): Promise<void>;
 }

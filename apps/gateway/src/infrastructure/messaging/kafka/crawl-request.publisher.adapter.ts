@@ -2,6 +2,7 @@ import { ICrawlRequestPublisherPort } from '../../ports/crawl-request-publisher.
 import { KafkaClientService } from '../../../common/clients/kafka-client';
 import { logger } from '../../../common/utils/logger';
 import config from '../../../config';
+import { CrawlRequest } from '../../../domain/entities/crawl-request.entity';
 
 export class KafkaCrawlRequestPublisherAdapter
   implements ICrawlRequestPublisherPort
@@ -10,39 +11,38 @@ export class KafkaCrawlRequestPublisherAdapter
 
   constructor(private readonly kafkaClient: KafkaClientService) {}
 
-  async publish(data: {
-    hash: string;
-    query: string;
-    url: string;
-  }): Promise<void> {
+  async publish(data: ReturnType<CrawlRequest['toJSON']>): Promise<void> {
     try {
       const producer = this.kafkaClient.getProducer();
 
-      const message = {
+      const messageValue = {
         url: data.url,
-        query: data.query,
+      };
+
+      const messageHeaders = {
+        id: data.id,
+        email: data.email,
+        createdAt: data.createdAt,
       };
 
       await producer.send({
         topic: this.topic,
         messages: [
           {
-            key: data.hash,
-            value: JSON.stringify(message),
-            headers: {
-              userHash: data.hash,
-            },
+            key: data.id,
+            value: JSON.stringify(messageValue),
+            headers: messageHeaders,
           },
         ],
       });
       logger.info('Successfully published crawl request to Kafka', {
         topic: this.topic,
-        hash: data.hash,
+        id: data.id,
       });
     } catch (error) {
       logger.error('Failed to publish crawl request to Kafka', {
         topic: this.topic,
-        hash: data.hash,
+        id: data.id,
         error: error instanceof Error ? error.message : 'Unknown Kafka error',
       });
       throw error;

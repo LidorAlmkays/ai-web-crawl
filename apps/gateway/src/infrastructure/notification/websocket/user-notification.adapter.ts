@@ -1,21 +1,23 @@
 import { IUserNotificationPort } from '../../ports/user-notification.port';
-import { WebSocketServerManager } from '../../../common/clients/websocket-server';
 import { IWebSocketMessage } from '../../../common/types';
 import { logger } from '../../../common/utils/logger';
+import { WebSocket } from 'ws';
 
 export class WebSocketUserNotificationAdapter implements IUserNotificationPort {
-  constructor(private readonly webSocketManager: WebSocketServerManager) {}
-
-  async send(connectionId: string, message: IWebSocketMessage): Promise<void> {
+  async send(connection: WebSocket, message: IWebSocketMessage): Promise<void> {
     logger.info('Sending notification to user', {
-      connectionId,
-      type: message.type,
+      type: message.event,
     });
     try {
-      this.webSocketManager.sendMessage(connectionId, message);
+      if (connection.readyState === WebSocket.OPEN) {
+        connection.send(JSON.stringify(message));
+      } else {
+        logger.warn(
+          'Attempted to send message to a closed WebSocket connection.'
+        );
+      }
     } catch (error) {
       logger.error('Failed to send notification to user', {
-        connectionId,
         error:
           error instanceof Error ? error.message : 'Unknown WebSocket error',
       });

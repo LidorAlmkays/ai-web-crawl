@@ -1,42 +1,66 @@
+import { WebSocketServer, WebSocket } from 'ws';
+import { IConnectionManagerPort } from '../../application/ports/connection-manager.port';
+import { AuthHandler } from './handlers/auth.handler';
+import { WebscrapeHandler } from './handlers/webscrape.handler';
 import { logger } from '../../common/utils/logger';
-import { IWebSocketMessageHandler } from '../../common/types';
 
-/**
- * A dictionary to store message handlers, mapping message types to their handler functions.
- * @type {{ [messageType: string]: IWebSocketMessageHandler }}
- */
-const messageHandlers: { [messageType: string]: IWebSocketMessageHandler } = {};
-
-/**
- * Registers a message handler for a specific message type.
- * This function populates the messageHandlers dictionary.
- *
- * @param {string} messageType - The type of the message (e.g., 'webscrape').
- * @param {IWebSocketMessageHandler} handler - The handler function to execute for the message type.
- */
-export function registerWebSocketHandler(
-  messageType: string,
-  handler: IWebSocketMessageHandler
+export function setupWebSocketRoutes(
+  wss: WebSocketServer,
+  connectionManager: IConnectionManagerPort,
+  authHandler: AuthHandler,
+  webscrapeHandler: WebscrapeHandler
 ): void {
-  if (messageHandlers[messageType]) {
-    logger.warn(
-      `Overwriting existing handler for message type: ${messageType}`
-    );
-  }
-  messageHandlers[messageType] = handler;
-  logger.info(
-    `Registered WebSocket handler for message type: "${messageType}"`
-  );
-}
+  wss.on('connection', (ws: WebSocket) => {
+    logger.info('Client connected');
 
-/**
- * Retrieves the handler for a given message type.
- *
- * @param {string} messageType - The type of the message.
- * @returns {IWebSocketMessageHandler | undefined} The handler function or undefined if not found.
- */
-export function getWebSocketHandler(
-  messageType: string
-): IWebSocketMessageHandler | undefined {
-  return messageHandlers[messageType];
+    ws.on('message', async (message: string) => {
+      try {
+        const parsedMessage = JSON.parse(message);
+        const { event, data } = parsedMessage;
+
+        if (event === 'auth') {
+          await authHandler.handle(ws, data);
+        } else {
+          const email = connectionManager.getEmailByConnection(ws);
+          if (!email) {
+            logger.error(
+              'Unauthenticated client sent a message. Closing connection.'
+            );
+            ws.close(4001, 'Unauthorized');
+            return;
+          }
+
+          // Route to other handlers based on event
+          switch (event) {
+            case 'submit_crawl':
+              await webscrapeHandler.handle(email, data, ws);
+              break;
+            default:
+              logger.warn(`Unknown event type received: ${event}`);
+              ws.send(
+                JSON.stringify({
+                  event: 'error',
+                  message: `Unknown event: ${event}`,
+                })
+              );
+          }
+        }
+      } catch (error) {
+        logger.error('Failed to process message', { error });
+        ws.send(
+          JSON.stringify({ event: 'error', message: 'Invalid message format' })
+        );
+      }
+    });
+
+    ws.on('close', () => {
+      logger.info('Client disconnected');
+      connectionManager.remove(ws);
+    });
+
+    ws.on('error', (error) => {
+      logger.error('WebSocket error occurred', { error });
+      connectionManager.remove(ws);
+    });
+  });
 }

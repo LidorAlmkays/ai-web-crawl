@@ -1,5 +1,6 @@
 import { IWebSocketMessage } from '../../common/types';
+import { WebSocket } from 'ws';
 
 export interface IUserNotificationPort {
-  send(connectionId: string, message: IWebSocketMessage): Promise<void>;
+  send(connection: WebSocket, message: IWebSocketMessage): Promise<void>;
 }

@@ -4,16 +4,11 @@
   "files": [],
   "references": [
     {
-      "path": "./apps/WebCrawling-e2e"
-    },
-    {
-      "path": "./apps/WebCrawling"
-    },
-    {
-      "path": "./apps/gateway-e2e"
-    },
-    {
       "path": "./apps/gateway"
+    },
+
+    {
+      "path": "./apps/task-manager"
     }
   ]
 }

@@ -1,9 +1,9 @@
 export interface IProcessCrawlResponsePort {
   execute(data: {
-    userHash: string;
-    originalUrl: string;
-    scrapedData: string;
+    id: string;
+    email: string;
     success: boolean;
+    result?: any;
     errorMessage?: string;
   }): Promise<void>;
 }

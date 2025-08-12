@@ -2,7 +2,7 @@
  * Defines the contract for a generic WebSocket message.
  */
 export interface IWebSocketMessage {
-  type: string;
+  event: string;
   data: any;
   timestamp?: string;
 }

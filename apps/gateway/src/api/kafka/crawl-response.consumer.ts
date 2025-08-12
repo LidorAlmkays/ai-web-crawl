@@ -4,8 +4,8 @@ import config from '../../config';
 import { IProcessCrawlResponsePort } from '../../application/ports/process-crawl-response.port';
 import { IKafkaClientService } from '../../common/interfaces/kafka-client.interface';
 import { Consumer } from 'kafkajs';
-import { validateDto } from '../../common/utils/validation';
 import { CrawlResponseMessageDto } from './dtos/crawl-response-message.dto';
+import { validateDto } from '../../common/utils/validation';
 
 export class CrawlResponseConsumer {
   private readonly consumer: Consumer;
@@ -34,19 +34,23 @@ export class CrawlResponseConsumer {
 
   private async handleMessage({ message }: EachMessagePayload): Promise<void> {
     try {
+      // 1. Extract and validate headers
+      const id = message.headers?.id?.toString();
+      const email = message.headers?.email?.toString();
+
+      if (!id || !email) {
+        logger.error('Missing id or email in crawl response message headers', {
+          key: message.key?.toString(),
+        });
+        return;
+      }
+
+      // 2. Extract and validate body
       if (!message.value) {
         logger.warn('Received Kafka message with no value');
         return;
       }
-
-      const userHash = message.headers?.userHash?.toString();
-      if (!userHash) {
-        logger.error('Missing userHash in message headers');
-        return;
-      }
-
       const rawData = JSON.parse(message.value.toString());
-
       const {
         isValid,
         data: validatedData,
@@ -55,17 +59,20 @@ export class CrawlResponseConsumer {
 
       if (!isValid || !validatedData) {
         logger.error('Invalid crawl response message payload', {
-          userHash,
+          id,
+          email,
           error: errorMessage,
+          rawData,
         });
         return;
       }
 
+      // 3. Execute the service
       await this.processCrawlResponseService.execute({
-        userHash,
-        originalUrl: validatedData.originalUrl,
-        scrapedData: validatedData.scrapedData, // Now a string
+        id,
+        email,
         success: validatedData.success,
+        result: validatedData.scrapedData,
         errorMessage: validatedData.errorMessage,
       });
     } catch (error) {

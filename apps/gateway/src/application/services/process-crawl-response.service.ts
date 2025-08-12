@@ -1,50 +1,51 @@
 import { IProcessCrawlResponsePort } from '../ports/process-crawl-response.port';
-import { ICrawlStateRepositoryPort } from '../../infrastructure/ports/crawl-state-repository.port';
+import { ICrawlRequestRepositoryPort } from '../ports/crawl-request-repository.port';
 import { IUserNotificationPort } from '../../infrastructure/ports/user-notification.port';
+import { IConnectionManagerPort } from '../ports/connection-manager.port';
 import { logger } from '../../common/utils/logger';
-import { IWebscrapeResponseMessage } from '../../common/types';
+import { CrawlStatus } from '../../domain/enums/crawl-status.enum';
 
 export class ProcessCrawlResponseService implements IProcessCrawlResponsePort {
   constructor(
-    private readonly crawlStateRepository: ICrawlStateRepositoryPort,
+    private readonly crawlRequestRepository: ICrawlRequestRepositoryPort,
+    private readonly connectionManager: IConnectionManagerPort,
     private readonly userNotification: IUserNotificationPort
   ) {}
 
   async execute(data: {
-    userHash: string;
-    originalUrl: string;
-    scrapedData: string; // Changed to string
+    id: string;
+    email: string;
     success: boolean;
+    result?: any;
     errorMessage?: string;
   }): Promise<void> {
-    const { userHash } = data;
-    logger.info('Processing crawl response', { userHash });
+    const { id, email } = data;
+    logger.info(`Processing crawl response for request ${id}`);
 
-    const state = await this.crawlStateRepository.findByHash(userHash);
+    const request = await this.crawlRequestRepository.findById(email, id);
 
-    if (!state) {
-      logger.warn('No crawl state found for hash, cannot notify user', {
-        userHash,
-      });
+    if (!request) {
+      logger.warn(`Crawl request ${id} not found, cannot process response.`);
       return;
     }
 
-    const notificationMessage: IWebscrapeResponseMessage = {
-      type: 'webscrape_result',
-      data: {
-        originalUrl: data.originalUrl,
-        success: data.success,
-        scrapedData: data.scrapedData, // Now a string
-        errorMessage: data.errorMessage,
-      },
-      timestamp: new Date().toISOString(),
-    };
+    // Update request state
+    request.status = data.success ? CrawlStatus.COMPLETED : CrawlStatus.FAILED;
+    request.result = data.result || { error: data.errorMessage };
+    await this.crawlRequestRepository.update(request);
 
-    await this.userNotification.send(state.connectionId, notificationMessage);
-
-    await this.crawlStateRepository.delete(userHash);
-    logger.info('Successfully processed and cleaned up crawl state', {
-      userHash,
-    });
+    // Check if user is online and notify
+    const connection = this.connectionManager.getConnectionByEmail(email);
+    if (connection) {
+      this.userNotification.send(connection, {
+        event: 'crawl_update',
+        data: request.toJSON(),
+      });
+      logger.info(`Sent crawl_update notification to online user ${email}`);
+    } else {
+      logger.info(
+        `User ${email} is offline, notification will be delivered upon next connection.`
+      );
+    }
   }
 }
