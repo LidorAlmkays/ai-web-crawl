@@ -68,7 +68,7 @@
     "test": "jest",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
-    "test:tracing": "node scripts/run-tracing-test.js"
+    "db:setup": "node scripts/apply-database-schema.js"
   },
   "dependencies": {},
   "devDependencies": {}

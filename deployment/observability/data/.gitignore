@@ -1,0 +1,64 @@
+# Observability Data Directory
+# This directory contains runtime data from all observability services
+# All data should be excluded from version control
+
+# Grafana data
+grafana/
+# Grafana database files
+*.db
+# Grafana generated files
+*.png
+*.pdf
+*.csv
+
+# Loki data
+loki/
+# Loki chunks and indexes
+chunks/
+index/
+wal/
+compactor/
+tsdb-shipper-*/
+
+# Prometheus data
+prometheus/
+# Prometheus time series data
+chunks_head/
+# Prometheus WAL (Write-Ahead Log)
+wal/
+# Prometheus lock files
+lock
+queries.active
+
+# Tempo data
+tempo/
+# Tempo blocks and WAL
+blocks/
+wal/
+
+# OTEL Collector logs
+otel-logs/
+*.log
+*.log.*
+
+# General data files
+*.tmp
+*.temp
+*.cache
+*.lock
+*.pid
+
+# Database files
+*.sqlite
+*.sqlite3
+*.db-journal
+
+# Binary and compressed files
+*.bin
+*.dat
+*.gz
+*.tar
+*.zip
+
+# All subdirectories (catch-all)
+*/

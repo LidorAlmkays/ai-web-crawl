@@ -1,210 +1,138 @@
-# Distributed Tracing Test Scripts
+# Database Setup Scripts
 
-This directory contains scripts for testing the distributed tracing functionality of the task-manager application.
+This directory contains a utility script for setting up the database schema and metrics functions for the task-manager application.
 
 ## Files
 
-- `test-distributed-tracing.ts` - TypeScript version of the test (requires compilation)
-- `run-tracing-test.js` - JavaScript version of the test (can run directly)
+- `apply-database-schema.js` - Applies the complete database schema including enums, tables, triggers, stored procedures, functions, views, and metrics functions
 - `README.md` - This file
 
 ## Quick Start
 
 ### Prerequisites
 
-1. **Ensure the observability stack is running**:
+1. **Ensure PostgreSQL is running**:
 
    ```bash
-   # Check if observability services are running
-   docker ps | grep -E "(otel-collector|tempo|grafana|kafka)"
+   # Check if PostgreSQL is running
+   docker ps | grep postgres
    ```
 
-2. **If not running, start the observability stack**:
+2. **If not running, start PostgreSQL**:
 
    ```bash
-   cd deployment/observability
-   docker-compose up -d
+   cd deployment/devops
+   docker-compose up -d postgres
    ```
 
-3. **Run the distributed tracing test**:
+3. **Set up the database schema**:
+
    ```bash
-   npm run test:tracing
+   # Using npm script (recommended)
+   npm run db:setup
+
+   # Or directly with node
+   node scripts/apply-database-schema.js
    ```
 
-### What the Test Does
+## Database Configuration
 
-The test script sends 4 Kafka messages with W3C trace context:
+The script uses these environment variables (with defaults):
 
-1. **New Task Message** - Creates a new web crawl task
-2. **Complete Task Message** - Marks the task as completed (same trace)
-3. **Error Task Message** - Marks the task as errored (same trace)
-4. **Another New Task** - Creates a second task (different trace)
+- `POSTGRES_USER` (default: 'postgres')
+- `POSTGRES_PASSWORD` (default: 'password')
+- `POSTGRES_DB` (default: 'tasks_manager')
+- `POSTGRES_HOST` (default: 'localhost')
+- `POSTGRES_PORT` (default: 5432)
+- `POSTGRES_SSL` (default: false)
 
-### Expected Trace Structure
+## Schema Structure
 
-```
-Gateway Trace: 4bf92f3577b34da6a3ce929d0e0e4736
-├── Gateway Span: 00f067aa0ba902b7 (Parent)
-└── Task-Manager Spans:
-    ├── kafka.new_task_processing (Child)
-    │   ├── headers_validated
-    │   ├── body_validated
-    │   ├── create_web_crawl_task (Child)
-    │   │   ├── domain_entity_created
-    │   │   └── database_create_web_crawl_task (Child)
-    │   │       ├── database_query_executing
-    │   │       └── database_query_successful
-    │   └── task_created
-    ├── kafka.complete_task_processing (Child)
-    │   ├── headers_extracted
-    │   ├── body_validated
-    │   ├── update_web_crawl_task_status (Child)
-    │   │   ├── task_retrieved
-    │   │   ├── domain_entity_updated
-    │   │   └── database_update_web_crawl_task (Child)
-    │   └── task_completed
-    └── kafka.error_task_processing (Child)
-        ├── headers_extracted
-        ├── body_validated
-        ├── update_web_crawl_task_status (Child)
-        └── task_errored
-```
+The database schema includes:
 
-## Verification Steps
+- **Enums**: Task status and type definitions
+- **Tables**: Web crawl tasks and related data
+- **Triggers**: Automatic timestamp updates
+- **Stored Procedures**: Task management operations
+- **Functions**: Metrics and reporting functions
+- **Views**: Aggregated data views
 
-### 1. Check Grafana
+## Metrics Functions
 
-1. Open Grafana at http://localhost:3001
-2. Login with `admin/admin`
-3. Navigate to **Explore**
-4. Select **Tempo** as the data source
-5. Search for traces with:
-   - Service name: `task-manager`
-   - Operation: `kafka.new_task_processing`
-   - Time range: Last 15 minutes
+The metrics functions provide:
 
-### 2. Look for Test Traces
+- `get_new_tasks_count(hours)` - Count of new tasks in the last N hours
+- `get_completed_tasks_count(hours)` - Count of completed tasks in the last N hours
+- `get_error_tasks_count(hours)` - Count of error tasks in the last N hours
+- `get_tasks_count_by_status(status, hours)` - Count of tasks by status in the last N hours
+- `get_web_crawl_metrics(hours)` - Comprehensive web crawl metrics
 
-Search for these specific trace IDs in Grafana:
+## API Endpoints
 
-- `4bf92f3577b34da6a3ce929d0e0e4736` (main test trace)
-- Look for child spans under this trace
+After running the script, these metrics endpoints will be available:
 
-### 3. Verify Trace Context Propagation
-
-1. **Parent-Child Relationships**: Verify that all spans are properly linked
-2. **Trace Attributes**: Check that Kafka headers are captured as attributes
-3. **Service Names**: Ensure all spans have `service.name="task-manager"`
-4. **Operation Names**: Verify operation names match the expected structure
-
-### 4. Check OTEL Collector Logs
-
-```bash
-docker logs otel-collector
-```
-
-Look for:
-
-- Received traces
-- Forwarded traces to Tempo
-- Any errors or warnings
-
-### 5. Check Task Manager Logs
-
-```bash
-# If running locally
-npm run serve
-
-# If running in Docker
-docker logs <task-manager-container-name>
-```
-
-Look for:
-
-- Trace context extraction
-- Span creation
-- Kafka message processing
+- `GET /api/metrics` - Prometheus format metrics
+- `GET /api/metrics/json` - JSON format metrics
+- `GET /api/metrics/config` - Metrics configuration
 
 ## Troubleshooting
 
-### No Traces Appearing
+### Connection Issues
 
-1. **Check Kafka connectivity**:
-
-   ```bash
-   docker logs kafka
-   ```
-
-2. **Verify task-manager is processing messages**:
+1. **Check PostgreSQL is running**:
 
    ```bash
-   # If running locally
-   npm run serve | grep "kafka"
-
-   # If running in Docker
-   docker logs <task-manager-container-name> | grep "kafka"
+   docker ps | grep postgres
    ```
 
-3. **Check OTEL Collector configuration**:
+2. **Verify connection details**:
+
    ```bash
-   docker logs otel-collector
+   # Test connection manually
+   psql -h localhost -p 5432 -U postgres -d tasks_manager
    ```
 
-### Traces Appearing but Not Linked
+3. **Check environment variables**:
 
-1. **Verify W3C trace context format**:
-
-   - Should be: `00-{traceId}-{spanId}-01`
-   - Example: `00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01`
-
-2. **Check trace context extraction**:
-   - Look for "headers_extracted" events in spans
-   - Verify traceparent header is being parsed
-
-### Performance Issues
-
-1. **Check sampling rate**:
-
-   - Development: 100% (`TRACING_SAMPLING_RATE=1.0`)
-   - Production: 10% (`TRACING_SAMPLING_RATE=0.1`)
-
-2. **Monitor resource usage**:
    ```bash
-   docker stats
+   echo $POSTGRES_HOST
+   echo $POSTGRES_PORT
+   echo $POSTGRES_DB
    ```
 
-## Test Data
+### Schema Application Issues
 
-The test uses these specific values:
+1. **Check file permissions**:
 
-- **Trace ID**: `4bf92f3577b34da6a3ce929d0e0e4736`
-- **Span ID**: `00f067aa0ba902b7`
-- **Task Type**: `web-crawl`
-- **User Email**: `test@example.com`
-- **Base URL**: `https://example.com`
+   ```bash
+   ls -la scripts/
+   ```
 
-## Customization
+2. **Verify schema files exist**:
 
-You can modify the test by editing `run-tracing-test.js`:
+   ```bash
+   ls -la src/infrastructure/persistence/postgres/schema/
+   ```
 
-- Change trace IDs
-- Modify message content
-- Add more test scenarios
-- Adjust timing between messages
+3. **Check PostgreSQL logs**:
+
+   ```bash
+   docker logs <postgres-container-name>
+   ```
 
 ## Integration with CI/CD
 
-This test can be integrated into CI/CD pipelines:
+This script can be integrated into CI/CD pipelines:
 
 ```yaml
 # Example GitHub Actions step
-- name: Test Distributed Tracing
+- name: Setup Database Schema
   run: |
     cd apps/task-manager
-    # Ensure observability stack is running
-    cd ../deployment/observability
-    docker-compose up -d
-    sleep 30  # Wait for services
-    cd ../../apps/task-manager
-    npm run test:tracing
+    npm run db:setup
+  env:
+    POSTGRES_HOST: ${{ secrets.POSTGRES_HOST }}
+    POSTGRES_USER: ${{ secrets.POSTGRES_USER }}
+    POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+    POSTGRES_DB: ${{ secrets.POSTGRES_DB }}
 ```
