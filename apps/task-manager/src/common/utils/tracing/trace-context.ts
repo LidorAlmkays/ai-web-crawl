@@ -66,26 +66,44 @@ export class TraceContextManager {
   /**
    * Inject trace context into Kafka headers
    *
-   * @param context - The span context to inject
+   * @param existingHeaders - Existing headers to preserve
+   * @param traceId - The trace ID
+   * @param spanId - The span ID
+   * @param traceFlags - The trace flags (default: 1 for sampled)
    * @returns Headers object with trace context
    */
-  static injectIntoKafkaHeaders(context: SpanContext): Record<string, any> {
+  static injectIntoKafkaHeaders(
+    existingHeaders: Record<string, any> = {},
+    traceId: string,
+    spanId: string,
+    traceFlags = 1
+  ): Record<string, any> {
     return {
-      traceparent: this.formatW3CTraceContext(context),
-      tracestate: context.traceState?.toString() || '',
+      ...existingHeaders,
+      traceparent: this.formatW3CTraceContext(traceId, spanId, traceFlags),
+      tracestate: '',
     };
   }
 
   /**
    * Inject trace context into HTTP headers
    *
-   * @param context - The span context to inject
+   * @param existingHeaders - Existing headers to preserve
+   * @param traceId - The trace ID
+   * @param spanId - The span ID
+   * @param traceFlags - The trace flags (default: 1 for sampled)
    * @returns Headers object with trace context
    */
-  static injectIntoHttpHeaders(context: SpanContext): Record<string, any> {
+  static injectIntoHttpHeaders(
+    existingHeaders: Record<string, any> = {},
+    traceId: string,
+    spanId: string,
+    traceFlags = 1
+  ): Record<string, any> {
     return {
-      traceparent: this.formatW3CTraceContext(context),
-      tracestate: context.traceState?.toString() || '',
+      ...existingHeaders,
+      traceparent: this.formatW3CTraceContext(traceId, spanId, traceFlags),
+      tracestate: '',
     };
   }
 
@@ -145,18 +163,48 @@ export class TraceContextManager {
    * @param context - The span context to format
    * @returns Formatted traceparent string
    */
-  private static formatW3CTraceContext(context: SpanContext): string {
-    const traceFlags = context.traceFlags.toString(16).padStart(2, '0');
+  static formatW3CTraceContextFromSpanContext(context: SpanContext): string {
+    // Use traceFlags from SpanContext, default to 1 (sampled) if not available
+    const traceFlags = (context.traceFlags || 1).toString(16).padStart(2, '0');
     return `00-${context.traceId}-${context.spanId}-${traceFlags}`;
+  }
+
+  /**
+   * Format W3C trace context from trace ID and span ID
+   *
+   * @param traceId - The trace ID
+   * @param spanId - The span ID
+   * @param traceFlags - The trace flags (default: 1 for sampled)
+   * @returns Formatted traceparent string
+   */
+  static formatW3CTraceContext(
+    traceId: string,
+    spanId: string,
+    traceFlags = 1
+  ): string {
+    const flags = traceFlags.toString(16).padStart(2, '0');
+    return `00-${traceId}-${spanId}-${flags}`;
   }
 
   /**
    * Validate trace context format
    *
-   * @param context - The trace context to validate
+   * @param context - The trace context or traceparent string to validate
    * @returns True if valid, false otherwise
    */
-  static isValidTraceContext(context: TraceContext): boolean {
+  static isValidTraceContext(context: TraceContext | string): boolean {
+    if (typeof context === 'string') {
+      // Validate traceparent string format: 00-<trace-id>-<span-id>-<trace-flags>
+      if (
+        !context ||
+        !/^00-[a-f0-9]{32}-[a-f0-9]{16}-[0-9a-f]{2}$/i.test(context)
+      ) {
+        return false;
+      }
+      return true;
+    }
+
+    // Validate TraceContext object
     if (!context || !context.traceId || !context.spanId) {
       return false;
     }
@@ -190,7 +238,7 @@ export class TraceContextManager {
   static createTraceContext(
     traceId?: string,
     spanId?: string,
-    traceFlags: number = 1
+    traceFlags = 1
   ): TraceContext {
     const generatedTraceId = traceId || this.generateTraceId();
     const generatedSpanId = spanId || this.generateSpanId();
@@ -208,7 +256,7 @@ export class TraceContextManager {
    *
    * @returns A random trace ID
    */
-  private static generateTraceId(): string {
+  static generateTraceId(): string {
     return Array.from({ length: 32 }, () =>
       Math.floor(Math.random() * 16).toString(16)
     ).join('');
@@ -219,7 +267,7 @@ export class TraceContextManager {
    *
    * @returns A random span ID
    */
-  private static generateSpanId(): string {
+  static generateSpanId(): string {
     return Array.from({ length: 16 }, () =>
       Math.floor(Math.random() * 16).toString(16)
     ).join('');

@@ -1,6 +1,6 @@
 import { TraceManager } from '../trace-manager';
 import { SpanStatusCode, trace } from '@opentelemetry/api';
-import { TraceTestHelper } from '../../../test-utils/trace-test-helper';
+import { TraceTestHelper } from '../../../../test-utils/trace-test-helper';
 
 describe('TraceManager', () => {
   let traceManager: TraceManager;
@@ -213,5 +213,3 @@ describe('TraceManager', () => {
     });
   });
 });
-
-

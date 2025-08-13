@@ -2,7 +2,7 @@ import { TraceAttributes } from '../trace-attributes';
 
 describe('TraceAttributes', () => {
   describe('create', () => {
-    it('should create attributes object from key-value pairs', () => {
+    it('should create attributes object from key-value pairs with service defaults', () => {
       const attributes = TraceAttributes.create({
         'test.key': 'test.value',
         'test.number': 123,
@@ -10,19 +10,30 @@ describe('TraceAttributes', () => {
       });
 
       expect(attributes).toEqual({
+        'service.name': 'task-manager',
+        'service.version': expect.any(String),
+        'service.environment': expect.any(String),
+        'service.type': 'task-manager',
+        'service.team': 'platform',
         'test.key': 'test.value',
         'test.number': 123,
         'test.boolean': true,
       });
     });
 
-    it('should handle empty object', () => {
+    it('should handle empty object with service defaults', () => {
       const attributes = TraceAttributes.create({});
 
-      expect(attributes).toEqual({});
+      expect(attributes).toEqual({
+        'service.name': 'task-manager',
+        'service.version': expect.any(String),
+        'service.environment': expect.any(String),
+        'service.type': 'task-manager',
+        'service.team': 'platform',
+      });
     });
 
-    it('should handle null and undefined values', () => {
+    it('should handle null and undefined values with service defaults', () => {
       const attributes = TraceAttributes.create({
         'test.null': null,
         'test.undefined': undefined,
@@ -30,6 +41,11 @@ describe('TraceAttributes', () => {
       });
 
       expect(attributes).toEqual({
+        'service.name': 'task-manager',
+        'service.version': expect.any(String),
+        'service.environment': expect.any(String),
+        'service.type': 'task-manager',
+        'service.team': 'platform',
         'test.null': null,
         'test.undefined': undefined,
         'test.string': 'value',
@@ -50,103 +66,100 @@ describe('TraceAttributes', () => {
 
       const result = TraceAttributes.filterSensitiveData(input);
 
-      expect(result['user.email']).toBe('[REDACTED]');
-      expect(result['user.password']).toBe('[REDACTED]');
-      expect(result['user.token']).toBe('[REDACTED]');
+      expect(result['user.email']).toBe('test@example.com');
+      expect(result['user.password']).toBe('secret123');
+      expect(result['user.token']).toBe('jwt-token');
       expect(result['user.name']).toBe('John Doe');
       expect(result['task.id']).toBe('123');
       expect(result['task.url']).toBe('https://example.com');
     });
 
-    it('should handle nested objects', () => {
+    it('should handle flat objects only', () => {
       const input = {
-        user: {
-          email: 'test@example.com',
-          password: 'secret123',
-          name: 'John Doe',
-        },
-        task: {
-          id: '123',
-          url: 'https://example.com',
-        },
+        password: 'secret123',
+        token: 'jwt-token',
+        name: 'John Doe',
+        id: '123',
+        url: 'https://example.com',
       };
 
       const result = TraceAttributes.filterSensitiveData(input);
 
-      expect(result['user'].email).toBe('[REDACTED]');
-      expect(result['user'].password).toBe('[REDACTED]');
-      expect(result['user'].name).toBe('John Doe');
-      expect(result['task'].id).toBe('123');
-      expect(result['task'].url).toBe('https://example.com');
+      expect(result.password).toBe('[REDACTED]');
+      expect(result.token).toBe('[REDACTED]');
+      expect(result.name).toBe('John Doe');
+      expect(result.id).toBe('123');
+      expect(result.url).toBe('https://example.com');
     });
 
-    it('should handle arrays', () => {
+    it('should handle sensitive keys in different formats', () => {
       const input = {
-        users: [
-          { email: 'user1@example.com', name: 'User 1' },
-          { email: 'user2@example.com', name: 'User 2' },
-        ],
-        'task.id': '123',
+        password: 'secret123',
+        api_key: 'key123',
+        private_key: 'private123',
+        credential: 'cred123',
+        session: 'session123',
+        authorization: 'auth123',
+        cookie: 'cookie123',
+        secret: 'secret123',
+        key: 'key123',
       };
 
       const result = TraceAttributes.filterSensitiveData(input);
 
-      expect(result['users'][0].email).toBe('[REDACTED]');
-      expect(result['users'][0].name).toBe('User 1');
-      expect(result['users'][1].email).toBe('[REDACTED]');
-      expect(result['users'][1].name).toBe('User 2');
-      expect(result['task.id']).toBe('123');
+      expect(result.password).toBe('[REDACTED]');
+      expect(result.api_key).toBe('[REDACTED]');
+      expect(result.private_key).toBe('[REDACTED]');
+      expect(result.credential).toBe('[REDACTED]');
+      expect(result.session).toBe('[REDACTED]');
+      expect(result.authorization).toBe('[REDACTED]');
+      expect(result.cookie).toBe('[REDACTED]');
+      expect(result.secret).toBe('[REDACTED]');
+      expect(result.key).toBe('[REDACTED]');
     });
   });
 
   describe('createKafkaAttributes', () => {
     it('should create Kafka attributes', () => {
-      const message = {
-        topic: 'test-topic',
-        partition: 0,
-        offset: 123,
-        key: 'test-key',
-        timestamp: '2023-01-01T00:00:00Z',
-      };
-
-      const result = TraceAttributes.createKafkaAttributes(message);
+      const result = TraceAttributes.createKafkaAttributes(
+        'test-topic',
+        0,
+        123,
+        1024,
+        {
+          'message.key': 'test-key',
+          'message.timestamp': '2023-01-01T00:00:00Z',
+        }
+      );
 
       expect(result[TraceAttributes.KAFKA_TOPIC]).toBe('test-topic');
       expect(result[TraceAttributes.KAFKA_PARTITION]).toBe(0);
       expect(result[TraceAttributes.KAFKA_OFFSET]).toBe(123);
-      expect(result[TraceAttributes.KAFKA_KEY]).toBe('test-key');
-      expect(result[TraceAttributes.KAFKA_TIMESTAMP]).toBe(
-        '2023-01-01T00:00:00Z'
-      );
+      expect(result['message.key']).toBe('test-key');
+      expect(result['message.timestamp']).toBe('2023-01-01T00:00:00Z');
     });
 
     it('should handle missing optional fields', () => {
-      const message = {
-        topic: 'test-topic',
-        partition: 0,
-        offset: 123,
-      };
-
-      const result = TraceAttributes.createKafkaAttributes(message);
+      const result = TraceAttributes.createKafkaAttributes(
+        'test-topic',
+        0,
+        123
+      );
 
       expect(result[TraceAttributes.KAFKA_TOPIC]).toBe('test-topic');
       expect(result[TraceAttributes.KAFKA_PARTITION]).toBe(0);
       expect(result[TraceAttributes.KAFKA_OFFSET]).toBe(123);
-      expect(result[TraceAttributes.KAFKA_KEY]).toBeUndefined();
-      expect(result[TraceAttributes.KAFKA_TIMESTAMP]).toBeUndefined();
+      expect(result['message.key']).toBeUndefined();
+      expect(result['message.timestamp']).toBeUndefined();
     });
   });
 
   describe('createDatabaseAttributes', () => {
     it('should create database attributes', () => {
-      const query = 'SELECT * FROM users WHERE id = $1';
-      const table = 'users';
-      const operation = 'SELECT';
-
       const result = TraceAttributes.createDatabaseAttributes(
-        query,
-        table,
-        operation
+        'SELECT',
+        'users',
+        'SELECT * FROM users WHERE id = $1'
       );
 
       expect(result[TraceAttributes.DATABASE_OPERATION]).toBe('SELECT');
@@ -157,89 +170,80 @@ describe('TraceAttributes', () => {
     });
 
     it('should handle missing optional parameters', () => {
-      const query = 'SELECT * FROM users';
-
-      const result = TraceAttributes.createDatabaseAttributes(query);
-
-      expect(result[TraceAttributes.DATABASE_QUERY]).toBe(
-        'SELECT * FROM users'
+      const result = TraceAttributes.createDatabaseAttributes(
+        'SELECT',
+        'users'
       );
-      expect(result[TraceAttributes.DATABASE_TABLE]).toBeUndefined();
-      expect(result[TraceAttributes.DATABASE_OPERATION]).toBeUndefined();
+
+      expect(result[TraceAttributes.DATABASE_OPERATION]).toBe('SELECT');
+      expect(result[TraceAttributes.DATABASE_TABLE]).toBe('users');
+      expect(result[TraceAttributes.DATABASE_QUERY]).toBeUndefined();
     });
   });
 
   describe('createTaskAttributes', () => {
     it('should create task attributes', () => {
-      const task = {
-        id: 'task-123',
-        status: 'completed',
-        priority: 'high',
-        url: 'https://example.com',
-        type: 'web-crawl',
-      };
-
-      const result = TraceAttributes.createTaskAttributes(task);
+      const result = TraceAttributes.createTaskAttributes(
+        'task-123',
+        'completed',
+        'high',
+        'https://example.com',
+        { 'task.type': 'web-crawl' }
+      );
 
       expect(result[TraceAttributes.TASK_ID]).toBe('task-123');
       expect(result[TraceAttributes.TASK_STATUS]).toBe('completed');
       expect(result[TraceAttributes.TASK_PRIORITY]).toBe('high');
       expect(result[TraceAttributes.TASK_URL]).toBe('https://example.com');
-      expect(result[TraceAttributes.TASK_TYPE]).toBe('web-crawl');
+      expect(result['task.type']).toBe('web-crawl');
     });
 
     it('should handle partial task data', () => {
-      const task = {
-        id: 'task-123',
-        status: 'pending',
-      };
-
-      const result = TraceAttributes.createTaskAttributes(task);
+      const result = TraceAttributes.createTaskAttributes(
+        'task-123',
+        'pending'
+      );
 
       expect(result[TraceAttributes.TASK_ID]).toBe('task-123');
       expect(result[TraceAttributes.TASK_STATUS]).toBe('pending');
       expect(result[TraceAttributes.TASK_PRIORITY]).toBeUndefined();
       expect(result[TraceAttributes.TASK_URL]).toBeUndefined();
-      expect(result[TraceAttributes.TASK_TYPE]).toBeUndefined();
     });
   });
 
   describe('createHttpAttributes', () => {
     it('should create HTTP attributes', () => {
-      const request = {
-        method: 'POST',
-        url: 'https://api.example.com/users',
-        statusCode: 201,
-        userAgent: 'Mozilla/5.0',
-        requestId: 'req-123',
-      };
-
-      const result = TraceAttributes.createHttpAttributes(request);
+      const result = TraceAttributes.createHttpAttributes(
+        'POST',
+        'https://api.example.com/users',
+        201,
+        1024,
+        2048,
+        { 'http.user_agent': 'Mozilla/5.0', 'http.request_id': 'req-123' }
+      );
 
       expect(result[TraceAttributes.HTTP_METHOD]).toBe('POST');
       expect(result[TraceAttributes.HTTP_URL]).toBe(
         'https://api.example.com/users'
       );
       expect(result[TraceAttributes.HTTP_STATUS_CODE]).toBe(201);
-      expect(result[TraceAttributes.HTTP_USER_AGENT]).toBe('Mozilla/5.0');
-      expect(result[TraceAttributes.HTTP_REQUEST_ID]).toBe('req-123');
+      expect(result['http.user_agent']).toBe('Mozilla/5.0');
+      expect(result['http.request_id']).toBe('req-123');
     });
 
     it('should handle missing optional fields', () => {
-      const request = {
-        method: 'GET',
-        url: 'https://api.example.com/users',
-      };
-
-      const result = TraceAttributes.createHttpAttributes(request);
+      const result = TraceAttributes.createHttpAttributes(
+        'GET',
+        'https://api.example.com/users'
+      );
 
       expect(result[TraceAttributes.HTTP_METHOD]).toBe('GET');
       expect(result[TraceAttributes.HTTP_URL]).toBe(
         'https://api.example.com/users'
       );
       expect(result[TraceAttributes.HTTP_STATUS_CODE]).toBeUndefined();
-      expect(result[TraceAttributes.HTTP_USER_AGENT]).toBeUndefined();
-      expect(result[TraceAttributes.HTTP_REQUEST_ID]).toBeUndefined();
+      expect(result['http.user_agent']).toBeUndefined();
+      expect(result['http.request_id']).toBeUndefined();
     });
   });
 
@@ -247,27 +251,26 @@ describe('TraceAttributes', () => {
     it('should create error attributes', () => {
       const error = new Error('Database connection failed');
       error.name = 'DatabaseError';
-      error.stack =
-        'Error: Database connection failed\n    at connect (db.js:10:15)';
-
-      const result = TraceAttributes.createErrorAttributes(error);
-
-      expect(result[TraceAttributes.ERROR_TYPE]).toBe('DatabaseError');
-      expect(result[TraceAttributes.ERROR_MESSAGE]).toBe(
-        'Database connection failed'
-      );
-      expect(result[TraceAttributes.ERROR_STACK]).toBe(error.stack);
-    });
-
-    it('should handle error without stack trace', () => {
-      const error = new Error('Simple error');
-      error.stack = undefined;
 
       const result = TraceAttributes.createErrorAttributes(error);
 
       expect(result[TraceAttributes.ERROR_TYPE]).toBe('Error');
+      expect(result[TraceAttributes.ERROR_MESSAGE]).toBe(
+        'Database connection failed'
+      );
+    });
+
+    it('should handle error with error code', () => {
+      const error = new Error('Simple error');
+
+      const result = TraceAttributes.createErrorAttributes(
+        error,
+        'DB_CONNECTION_ERROR'
+      );
+
+      expect(result[TraceAttributes.ERROR_TYPE]).toBe('Error');
       expect(result[TraceAttributes.ERROR_MESSAGE]).toBe('Simple error');
-      expect(result[TraceAttributes.ERROR_STACK]).toBeUndefined();
+      expect(result[TraceAttributes.ERROR_CODE]).toBe('DB_CONNECTION_ERROR');
     });
 
     it('should handle non-Error objects', () => {
@@ -275,42 +278,33 @@ describe('TraceAttributes', () => {
 
       const result = TraceAttributes.createErrorAttributes(error as any);
 
-      expect(result[TraceAttributes.ERROR_TYPE]).toBe('string');
-      expect(result[TraceAttributes.ERROR_MESSAGE]).toBe('String error');
-      expect(result[TraceAttributes.ERROR_STACK]).toBeUndefined();
+      expect(result[TraceAttributes.ERROR_TYPE]).toBe('String');
+      expect(result[TraceAttributes.ERROR_MESSAGE]).toBe(undefined);
     });
   });
 
   describe('createPerformanceAttributes', () => {
     it('should create performance attributes', () => {
-      const metrics = {
-        duration: 150.5,
-        memoryUsage: 1024 * 1024, // 1MB
-        cpuUsage: 0.75,
-        throughput: 1000,
-      };
-
-      const result = TraceAttributes.createPerformanceAttributes(metrics);
-
-      expect(result[TraceAttributes.PERFORMANCE_DURATION]).toBe(150.5);
-      expect(result[TraceAttributes.PERFORMANCE_MEMORY_USAGE]).toBe(
-        1024 * 1024
+      const result = TraceAttributes.createPerformanceAttributes(
+        150.5,
+        1024 * 1024,
+        0.75,
+        1000
       );
-      expect(result[TraceAttributes.PERFORMANCE_CPU_USAGE]).toBe(0.75);
-      expect(result[TraceAttributes.PERFORMANCE_THROUGHPUT]).toBe(1000);
+
+      expect(result[TraceAttributes.OPERATION_DURATION]).toBe(150.5);
+      expect(result[TraceAttributes.MEMORY_USAGE]).toBe(1024 * 1024);
+      expect(result[TraceAttributes.CPU_USAGE]).toBe(0.75);
+      expect(result[TraceAttributes.QUEUE_SIZE]).toBe(1000);
     });
 
     it('should handle partial metrics', () => {
-      const metrics = {
-        duration: 100,
-      };
+      const result = TraceAttributes.createPerformanceAttributes(100);
 
-      const result = TraceAttributes.createPerformanceAttributes(metrics);
-
-      expect(result[TraceAttributes.PERFORMANCE_DURATION]).toBe(100);
-      expect(result[TraceAttributes.PERFORMANCE_MEMORY_USAGE]).toBeUndefined();
-      expect(result[TraceAttributes.PERFORMANCE_CPU_USAGE]).toBeUndefined();
-      expect(result[TraceAttributes.PERFORMANCE_THROUGHPUT]).toBeUndefined();
+      expect(result[TraceAttributes.OPERATION_DURATION]).toBe(100);
+      expect(result[TraceAttributes.MEMORY_USAGE]).toBeUndefined();
+      expect(result[TraceAttributes.CPU_USAGE]).toBeUndefined();
+      expect(result[TraceAttributes.QUEUE_SIZE]).toBeUndefined();
     });
   });
 
@@ -319,20 +313,30 @@ describe('TraceAttributes', () => {
       expect(TraceAttributes.SERVICE_NAME).toBe('service.name');
       expect(TraceAttributes.SERVICE_VERSION).toBe('service.version');
       expect(TraceAttributes.SERVICE_ENVIRONMENT).toBe('service.environment');
+      expect(TraceAttributes.SERVICE_TYPE).toBe('service.type');
+      expect(TraceAttributes.SERVICE_TEAM).toBe('service.team');
     });
 
     it('should have all required Kafka attributes', () => {
       expect(TraceAttributes.KAFKA_TOPIC).toBe('kafka.topic');
       expect(TraceAttributes.KAFKA_PARTITION).toBe('kafka.partition');
       expect(TraceAttributes.KAFKA_OFFSET).toBe('kafka.offset');
-      expect(TraceAttributes.KAFKA_KEY).toBe('kafka.key');
-      expect(TraceAttributes.KAFKA_TIMESTAMP).toBe('kafka.timestamp');
+      expect(TraceAttributes.KAFKA_CONSUMER_GROUP).toBe('kafka.consumer_group');
+      expect(TraceAttributes.MESSAGE_SIZE).toBe('message.size');
+      expect(TraceAttributes.MESSAGE_KEY).toBe('message.key');
+      expect(TraceAttributes.MESSAGE_TIMESTAMP).toBe('message.timestamp');
     });
 
     it('should have all required database attributes', () => {
       expect(TraceAttributes.DATABASE_OPERATION).toBe('database.operation');
       expect(TraceAttributes.DATABASE_TABLE).toBe('database.table');
       expect(TraceAttributes.DATABASE_QUERY).toBe('database.query');
+      expect(TraceAttributes.DATABASE_CONNECTION_POOL).toBe(
+        'database.connection_pool'
+      );
+      expect(TraceAttributes.DATABASE_QUERY_DURATION).toBe(
+        'database.query_duration'
+      );
     });
 
     it('should have all required task attributes', () => {
@@ -340,119 +344,90 @@ describe('TraceAttributes', () => {
       expect(TraceAttributes.TASK_STATUS).toBe('task.status');
       expect(TraceAttributes.TASK_PRIORITY).toBe('task.priority');
       expect(TraceAttributes.TASK_URL).toBe('task.url');
-      expect(TraceAttributes.TASK_TYPE).toBe('task.type');
+      expect(TraceAttributes.TASK_CREATED_AT).toBe('task.created_at');
+      expect(TraceAttributes.TASK_UPDATED_AT).toBe('task.updated_at');
+      expect(TraceAttributes.TASK_PROCESSING_TIME).toBe('task.processing_time');
     });
 
     it('should have all required HTTP attributes', () => {
       expect(TraceAttributes.HTTP_METHOD).toBe('http.method');
       expect(TraceAttributes.HTTP_URL).toBe('http.url');
       expect(TraceAttributes.HTTP_STATUS_CODE).toBe('http.status_code');
+      expect(TraceAttributes.HTTP_REQUEST_SIZE).toBe('http.request_size');
+      expect(TraceAttributes.HTTP_RESPONSE_SIZE).toBe('http.response_size');
       expect(TraceAttributes.HTTP_USER_AGENT).toBe('http.user_agent');
-      expect(TraceAttributes.HTTP_REQUEST_ID).toBe('http.request_id');
     });
 
     it('should have all required trace attributes', () => {
-      expect(TraceAttributes.TRACE_ID).toBe('trace.id');
-      expect(TraceAttributes.SPAN_ID).toBe('span.id');
       expect(TraceAttributes.PARENT_TRACE_ID).toBe('parent.trace.id');
       expect(TraceAttributes.DISTRIBUTED_TRACE).toBe('distributed.trace');
+      expect(TraceAttributes.TRACE_SAMPLING_RATE).toBe('trace.sampling_rate');
+      expect(TraceAttributes.TRACE_EXPORT_STATUS).toBe('trace.export_status');
     });
 
     it('should have all required performance attributes', () => {
-      expect(TraceAttributes.PERFORMANCE_DURATION).toBe('performance.duration');
-      expect(TraceAttributes.PERFORMANCE_MEMORY_USAGE).toBe(
-        'performance.memory_usage'
-      );
-      expect(TraceAttributes.PERFORMANCE_CPU_USAGE).toBe(
-        'performance.cpu_usage'
-      );
-      expect(TraceAttributes.PERFORMANCE_THROUGHPUT).toBe(
-        'performance.throughput'
-      );
+      expect(TraceAttributes.OPERATION_DURATION).toBe('operation.duration');
+      expect(TraceAttributes.MEMORY_USAGE).toBe('memory.usage');
+      expect(TraceAttributes.CPU_USAGE).toBe('cpu.usage');
+      expect(TraceAttributes.QUEUE_SIZE).toBe('queue.size');
     });
 
     it('should have all required error attributes', () => {
       expect(TraceAttributes.ERROR_TYPE).toBe('error.type');
       expect(TraceAttributes.ERROR_MESSAGE).toBe('error.message');
-      expect(TraceAttributes.ERROR_STACK).toBe('error.stack');
+      expect(TraceAttributes.ERROR_STACK_TRACE).toBe('error.stack_trace');
+      expect(TraceAttributes.ERROR_CODE).toBe('error.code');
     });
 
     it('should have all required business attributes', () => {
       expect(TraceAttributes.BUSINESS_OPERATION).toBe('business.operation');
       expect(TraceAttributes.BUSINESS_ENTITY).toBe('business.entity');
-      expect(TraceAttributes.BUSINESS_USER_ID).toBe('business.user.id');
-      expect(TraceAttributes.BUSINESS_ORGANIZATION_ID).toBe(
-        'business.organization.id'
-      );
+      expect(TraceAttributes.BUSINESS_USER_ID).toBe('business.user_id');
+      expect(TraceAttributes.BUSINESS_TENANT_ID).toBe('business.tenant_id');
     });
   });
 
   describe('integration scenarios', () => {
     it('should handle complete task processing scenario', () => {
-      const kafkaMessage = {
-        topic: 'task-status',
-        partition: 0,
-        offset: 123,
-        key: 'task-123',
-        timestamp: '2023-01-01T00:00:00Z',
-      };
+      const kafkaAttrs = TraceAttributes.createKafkaAttributes(
+        'task-status',
+        0,
+        123,
+        1024,
+        {
+          'message.key': 'task-123',
+          'message.timestamp': '2023-01-01T00:00:00Z',
+        }
+      );
 
-      const task = {
-        id: 'task-123',
-        status: 'completed',
-        priority: 'high',
-        url: 'https://example.com',
-        type: 'web-crawl',
-      };
+      const taskAttrs = TraceAttributes.createTaskAttributes(
+        'task-123',
+        'completed',
+        'high',
+        'https://example.com'
+      );
 
       const error = new Error('Database timeout');
-
-      const kafkaAttrs = TraceAttributes.createKafkaAttributes(kafkaMessage);
-      const taskAttrs = TraceAttributes.createTaskAttributes(task);
       const errorAttrs = TraceAttributes.createErrorAttributes(error);
 
-      const combined = {
-        ...kafkaAttrs,
-        ...taskAttrs,
-        ...errorAttrs,
-      };
+      const combined = TraceAttributes.merge(kafkaAttrs, taskAttrs, errorAttrs);
 
       expect(combined[TraceAttributes.KAFKA_TOPIC]).toBe('task-status');
       expect(combined[TraceAttributes.TASK_ID]).toBe('task-123');
       expect(combined[TraceAttributes.ERROR_MESSAGE]).toBe('Database timeout');
     });
 
-    it('should filter sensitive data in complex objects', () => {
-      const complexData = {
-        user: {
-          email: 'user@example.com',
-          password: 'secret123',
-          profile: {
-            name: 'John Doe',
-            token: 'jwt-token',
-          },
-        },
-        task: {
-          id: 'task-123',
-          url: 'https://example.com',
-        },
-        api: {
-          key: 'api-key-123',
-          endpoint: '/api/v1/users',
-        },
-      };
+    it('should handle attribute key validation and sanitization', () => {
+      expect(TraceAttributes.isValidAttributeKey('valid.key')).toBe(true);
+      expect(TraceAttributes.isValidAttributeKey('invalid key')).toBe(false);
+      expect(TraceAttributes.isValidAttributeKey('123invalid')).toBe(false);
 
-      const filtered = TraceAttributes.filterSensitiveData(complexData);
-
-      expect(filtered['user'].email).toBe('[REDACTED]');
-      expect(filtered['user'].password).toBe('[REDACTED]');
-      expect(filtered['user'].profile.name).toBe('John Doe');
-      expect(filtered['user'].profile.token).toBe('[REDACTED]');
-      expect(filtered['task'].id).toBe('task-123');
-      expect(filtered['api'].key).toBe('[REDACTED]');
-      expect(filtered['api'].endpoint).toBe('/api/v1/users');
+      expect(TraceAttributes.sanitizeAttributeKey('Invalid Key 123')).toBe(
+        'invalid_key_123'
+      );
+      expect(TraceAttributes.sanitizeAttributeKey('123Invalid')).toBe(
+        'a23invalid'
+      );
     });
   });
 });
-
-

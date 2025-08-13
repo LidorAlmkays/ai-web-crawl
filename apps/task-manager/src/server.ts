@@ -7,7 +7,11 @@
  * It handles signal processing and graceful shutdown.
  */
 
-import { initOpenTelemetry } from './common/utils/otel-init';
+// CRITICAL: Initialize OpenTelemetry synchronously before any other imports
+// This ensures instrumentation works properly for express, kafkajs, and pg
+const { initOpenTelemetry } = require('./common/utils/otel-init');
+initOpenTelemetry();
+
 import { TaskManagerApplication } from './app';
 import { logger, initializeLogger } from './common/utils/logger';
 
@@ -43,9 +47,7 @@ async function bootstrap() {
     debug: console.debug.bind(console),
   };
 
-  // Initialize OTEL first
-  initOpenTelemetry();
-
+  // OTEL is already initialized at the top of this file
   // Initialize logger after OTEL
   await initializeLogger();
 

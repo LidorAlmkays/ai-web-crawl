@@ -1,5 +1,5 @@
 import { TraceContextManager } from '../trace-context';
-import { TraceTestHelper } from '../../../test-utils/trace-test-helper';
+import { TraceTestHelper } from '../../../../test-utils/trace-test-helper';
 
 describe('TraceContextManager', () => {
   describe('extractFromKafkaHeaders', () => {
@@ -362,5 +362,3 @@ describe('TraceContextManager', () => {
     });
   });
 });
-
-

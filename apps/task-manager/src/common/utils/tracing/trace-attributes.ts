@@ -293,7 +293,7 @@ export class TraceAttributes {
    */
   static createDistributedTraceAttributes(
     parentTraceId: string,
-    isDistributed: boolean = true,
+    isDistributed = true,
     additionalAttributes: Record<string, any> = {}
   ): Record<string, any> {
     return this.create({

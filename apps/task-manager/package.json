@@ -68,7 +68,9 @@
     "test": "jest",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
-    "db:setup": "node scripts/apply-database-schema.js"
+    "push-kafka-tasks": "tsx scripts/push-kafka-tasks.ts",
+    "push-kafka-tasks-simple": "tsx scripts/push-kafka-tasks-simple.ts",
+    "test-kafka": "tsx scripts/test-kafka-connection.ts"
   },
   "dependencies": {},
   "devDependencies": {}

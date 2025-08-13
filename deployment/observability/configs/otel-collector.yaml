@@ -38,7 +38,7 @@ exporters:
     metric_expiration: 180m
     enable_open_metrics: true
   otlp/tempo:
-    endpoint: tempo:4317
+    endpoint: tempo:14250
     tls:
       insecure: true
   otlphttp/loki:

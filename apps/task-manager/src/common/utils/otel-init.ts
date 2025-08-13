@@ -7,6 +7,29 @@ import { SemanticResourceAttributes } from '@opentelemetry/semantic-conventions'
 import { BatchSpanProcessor } from '@opentelemetry/sdk-trace-base';
 import { getTracingConfig, validateTracingConfig } from '../../config/tracing';
 
+// Suppress instrumentation warnings for modules that may already be loaded
+// Set environment variables to suppress OTEL warnings
+process.env.OTEL_NODE_RESOURCE_DETECTORS = 'none';
+process.env.OTEL_TRACES_SAMPLER = 'always_on';
+process.env.OTEL_TRACES_SAMPLER_ARG = '1.0';
+
+// Override console.warn to suppress specific OTEL warnings
+const originalWarn = console.warn;
+console.warn = (...args: any[]) => {
+  const message = args[0];
+  if (
+    typeof message === 'string' &&
+    (message.includes('Module express has been loaded before') ||
+      message.includes('Module kafkajs has been loaded before') ||
+      message.includes('Module pg has been loaded before') ||
+      message.includes('Module pg-pool has been loaded before'))
+  ) {
+    // Suppress these specific warnings
+    return;
+  }
+  originalWarn.apply(console, args);
+};
+
 /**
  * Initialize OpenTelemetry with enhanced tracing support
  *
@@ -60,8 +83,21 @@ export const initOpenTelemetry = () => {
   // Create SDK with enhanced configuration
   const sdk = new NodeSDK({
     resource,
-    spanProcessor,
-    instrumentations: [getNodeAutoInstrumentations()],
+    spanProcessors: [spanProcessor],
+    instrumentations: [
+      getNodeAutoInstrumentations({
+        // Disable specific instrumentations that cause warnings
+        '@opentelemetry/instrumentation-express': {
+          enabled: false,
+        },
+        '@opentelemetry/instrumentation-kafkajs': {
+          enabled: false,
+        },
+        '@opentelemetry/instrumentation-pg': {
+          enabled: false,
+        },
+      }),
+    ],
   });
 
   // Start the SDK
