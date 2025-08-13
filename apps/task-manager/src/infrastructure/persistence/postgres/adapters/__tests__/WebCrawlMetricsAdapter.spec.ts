@@ -88,22 +88,60 @@ describe('WebCrawlMetricsAdapter', () => {
     });
   });
 
+  describe('getTotalTasksCountByCreationTime', () => {
+    it('should call get_total_tasks_count_by_creation_time SQL function with correct parameter', async () => {
+      const mockResult = { rows: [{ count: '22' }] };
+      mockPool.query.mockResolvedValue(mockResult);
+
+      const result = await adapter.getTotalTasksCountByCreationTime(24);
+
+      expect(mockPool.query).toHaveBeenCalledWith(
+        'SELECT get_total_tasks_count_by_creation_time($1) as count',
+        [24]
+      );
+      expect(result).toBe(22);
+    });
+
+    it('should handle different hour values', async () => {
+      const mockResult = { rows: [{ count: '8' }] };
+      mockPool.query.mockResolvedValue(mockResult);
+
+      await adapter.getTotalTasksCountByCreationTime(12);
+
+      expect(mockPool.query).toHaveBeenCalledWith(
+        'SELECT get_total_tasks_count_by_creation_time($1) as count',
+        [12]
+      );
+    });
+
+    it('should handle zero count result', async () => {
+      const mockResult = { rows: [{ count: '0' }] };
+      mockPool.query.mockResolvedValue(mockResult);
+
+      const result = await adapter.getTotalTasksCountByCreationTime(1);
+
+      expect(result).toBe(0);
+    });
+  });
+
   describe('getWebCrawlMetrics', () => {
-    it('should call all three methods and format response correctly', async () => {
-      // Mock all three individual methods
+    it('should call all four methods and format response correctly', async () => {
+      // Mock all four individual methods
       const mockNewResult = { rows: [{ count: '5' }] };
       const mockCompletedResult = { rows: [{ count: '15' }] };
       const mockErrorResult = { rows: [{ count: '2' }] };
+      const mockTotalResult = { rows: [{ count: '22' }] };
 
       mockPool.query
         .mockResolvedValueOnce(mockNewResult)
         .mockResolvedValueOnce(mockCompletedResult)
-        .mockResolvedValueOnce(mockErrorResult);
+        .mockResolvedValueOnce(mockErrorResult)
+        .mockResolvedValueOnce(mockTotalResult);
 
       const result = await adapter.getWebCrawlMetrics(24);
 
-      // Verify all three queries were called
-      expect(mockPool.query).toHaveBeenCalledTimes(3);
+      // Verify all four queries were called
+      expect(mockPool.query).toHaveBeenCalledTimes(4);
       expect(mockPool.query).toHaveBeenNthCalledWith(
         1,
         'SELECT get_new_tasks_count($1) as count',
@@ -119,12 +157,18 @@ describe('WebCrawlMetricsAdapter', () => {
         'SELECT get_error_tasks_count($1) as count',
         [24]
       );
+      expect(mockPool.query).toHaveBeenNthCalledWith(
+        4,
+        'SELECT get_total_tasks_count_by_creation_time($1) as count',
+        [24]
+      );
 
       // Verify response format
       expect(result).toMatchObject({
         newTasksCount: 5,
         completedTasksCount: 15,
         errorTasksCount: 2,
+        totalTasksCount: 22,
         timeRange: '24h',
       });
       expect(result.timestamp).toBeDefined();
@@ -151,6 +195,7 @@ describe('WebCrawlMetricsAdapter', () => {
       await adapter.getNewTasksCount(24);
       await adapter.getCompletedTasksCount(12);
       await adapter.getErrorTasksCount(6);
+      await adapter.getTotalTasksCountByCreationTime(24);
 
       // Verify all queries use $1 parameterization
       expect(mockPool.query).toHaveBeenCalledWith(
@@ -164,6 +209,10 @@ describe('WebCrawlMetricsAdapter', () => {
       expect(mockPool.query).toHaveBeenCalledWith(
         'SELECT get_error_tasks_count($1) as count',
         [6]
+      );
+      expect(mockPool.query).toHaveBeenCalledWith(
+        'SELECT get_total_tasks_count_by_creation_time($1) as count',
+        [24]
       );
     });
 

@@ -17,6 +17,7 @@
  * @property newTasksCount - Number of tasks with NEW status
  * @property completedTasksCount - Number of tasks with COMPLETED status
  * @property errorTasksCount - Number of tasks with ERROR status
+ * @property totalTasksCount - Number of all tasks created in time range regardless of status
  * @property timeRange - Human-readable description of the time range (e.g., "Last 24 hours")
  * @property timestamp - ISO timestamp when the metrics were calculated
  * @property lastUpdated - ISO timestamp when the metrics were last updated
@@ -27,6 +28,7 @@
  *   newTasksCount: 5,
  *   completedTasksCount: 150,
  *   errorTasksCount: 3,
+ *   totalTasksCount: 158,
  *   timeRange: "Last 24 hours",
  *   timestamp: "2024-01-15T10:30:00Z",
  *   lastUpdated: "2024-01-15T10:30:00Z"
@@ -37,6 +39,7 @@ export interface WebCrawlMetrics {
   newTasksCount: number;
   completedTasksCount: number;
   errorTasksCount: number;
+  totalTasksCount: number;
   timeRange: string;
   timestamp: string;
   lastUpdated: string;

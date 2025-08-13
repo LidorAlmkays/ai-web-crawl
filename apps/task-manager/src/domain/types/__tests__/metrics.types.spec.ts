@@ -7,6 +7,7 @@ describe('Metrics Domain Types', () => {
         newTasksCount: 5,
         completedTasksCount: 15,
         errorTasksCount: 2,
+        totalTasksCount: 22,
         timeRange: '24h',
         timestamp: '2024-01-01T00:00:00.000Z',
         lastUpdated: '2024-01-01T00:00:00.000Z',
@@ -15,6 +16,7 @@ describe('Metrics Domain Types', () => {
       expect(metrics.newTasksCount).toBe(5);
       expect(metrics.completedTasksCount).toBe(15);
       expect(metrics.errorTasksCount).toBe(2);
+      expect(metrics.totalTasksCount).toBe(22);
       expect(metrics.timeRange).toBe('24h');
       expect(metrics.timestamp).toBe('2024-01-01T00:00:00.000Z');
       expect(metrics.lastUpdated).toBe('2024-01-01T00:00:00.000Z');
@@ -25,6 +27,7 @@ describe('Metrics Domain Types', () => {
         newTasksCount: 0,
         completedTasksCount: 100,
         errorTasksCount: 1,
+        totalTasksCount: 101,
         timeRange: '1h',
         timestamp: '2024-01-01T00:00:00.000Z',
         lastUpdated: '2024-01-01T00:00:00.000Z',
@@ -33,6 +36,7 @@ describe('Metrics Domain Types', () => {
       expect(typeof metrics.newTasksCount).toBe('number');
       expect(typeof metrics.completedTasksCount).toBe('number');
       expect(typeof metrics.errorTasksCount).toBe('number');
+      expect(typeof metrics.totalTasksCount).toBe('number');
     });
 
     it('should accept string values for time-related fields', () => {
@@ -40,6 +44,7 @@ describe('Metrics Domain Types', () => {
         newTasksCount: 0,
         completedTasksCount: 0,
         errorTasksCount: 0,
+        totalTasksCount: 0,
         timeRange: '72h',
         timestamp: '2024-01-01T12:30:45.123Z',
         lastUpdated: '2024-01-01T12:30:45.123Z',
@@ -87,6 +92,7 @@ describe('Metrics Domain Types', () => {
         newTasksCount: 5,
         completedTasksCount: 15,
         errorTasksCount: 2,
+        totalTasksCount: 22,
         timeRange: '24h',
         timestamp: new Date().toISOString(),
         lastUpdated: new Date().toISOString(),
@@ -96,6 +102,7 @@ describe('Metrics Domain Types', () => {
         newTasksCount: expect.any(Number),
         completedTasksCount: expect.any(Number),
         errorTasksCount: expect.any(Number),
+        totalTasksCount: expect.any(Number),
         timeRange: expect.any(String),
         timestamp: expect.any(String),
         lastUpdated: expect.any(String),

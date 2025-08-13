@@ -16,6 +16,7 @@ describe('WebCrawlMetricsService', () => {
       getNewTasksCount: jest.fn(),
       getCompletedTasksCount: jest.fn(),
       getErrorTasksCount: jest.fn(),
+      getTotalTasksCountByCreationTime: jest.fn(),
     };
 
     service = new WebCrawlMetricsService(mockMetricsDataPort);
@@ -31,6 +32,7 @@ describe('WebCrawlMetricsService', () => {
         newTasksCount: 5,
         completedTasksCount: 15,
         errorTasksCount: 2,
+        totalTasksCount: 22,
         timeRange: '24h',
         timestamp: '2024-01-01T00:00:00.000Z',
         lastUpdated: '2024-01-01T00:00:00.000Z',
@@ -52,6 +54,7 @@ describe('WebCrawlMetricsService', () => {
         newTasksCount: 3,
         completedTasksCount: 10,
         errorTasksCount: 1,
+        totalTasksCount: 14,
         timeRange: '12h',
         timestamp: '2024-01-01T00:00:00.000Z',
         lastUpdated: '2024-01-01T00:00:00.000Z',
@@ -81,6 +84,7 @@ describe('WebCrawlMetricsService', () => {
         newTasksCount: 5,
         completedTasksCount: 15,
         errorTasksCount: 2,
+        totalTasksCount: 22,
         timeRange: '24h',
         timestamp: '2024-01-01T00:00:00.000Z',
         lastUpdated: '2024-01-01T00:00:00.000Z',
@@ -99,6 +103,11 @@ describe('WebCrawlMetricsService', () => {
       expect(result).toContain(
         'web_crawl_error_tasks_total{time_range="24h"} 2'
       );
+      expect(result).toContain('# HELP web_crawl_total_tasks_count');
+      expect(result).toContain('# TYPE web_crawl_total_tasks_count gauge');
+      expect(result).toContain(
+        'web_crawl_total_tasks_count{time_range="24h"} 22'
+      );
       expect(result).toContain('web_crawl_metrics_timestamp{time_range="24h"}');
     });
 
@@ -108,6 +117,7 @@ describe('WebCrawlMetricsService', () => {
         newTasksCount: 3,
         completedTasksCount: 10,
         errorTasksCount: 1,
+        totalTasksCount: 14,
         timeRange: '12h',
         timestamp: '2024-01-01T00:00:00.000Z',
         lastUpdated: '2024-01-01T00:00:00.000Z',
@@ -124,6 +134,9 @@ describe('WebCrawlMetricsService', () => {
       expect(result).toContain(
         'web_crawl_error_tasks_total{time_range="12h"} 1'
       );
+      expect(result).toContain(
+        'web_crawl_total_tasks_count{time_range="12h"} 14'
+      );
     });
 
     it('should include timestamp in Prometheus format', async () => {
@@ -131,6 +144,7 @@ describe('WebCrawlMetricsService', () => {
         newTasksCount: 0,
         completedTasksCount: 0,
         errorTasksCount: 0,
+        totalTasksCount: 0,
         timeRange: '24h',
         timestamp: '2024-01-01T12:00:00.000Z',
         lastUpdated: '2024-01-01T12:00:00.000Z',
@@ -178,6 +192,31 @@ describe('WebCrawlMetricsService', () => {
 
       expect(mockMetricsDataPort.getErrorTasksCount).toHaveBeenCalledWith(1);
       expect(result).toBe(2);
+    });
+
+    it('should call getTotalTasksCountByCreationTime with default time range', async () => {
+      mockMetricsDataPort.getTotalTasksCountByCreationTime.mockResolvedValue(
+        22
+      );
+
+      const result = await service.getTotalTasksCountByCreationTime();
+
+      expect(
+        mockMetricsDataPort.getTotalTasksCountByCreationTime
+      ).toHaveBeenCalledWith(metricsConfig.defaultTimeRangeHours);
+      expect(result).toBe(22);
+    });
+
+    it('should call getTotalTasksCountByCreationTime with custom time range', async () => {
+      const params: MetricsQueryParams = { hours: 6 };
+      mockMetricsDataPort.getTotalTasksCountByCreationTime.mockResolvedValue(8);
+
+      const result = await service.getTotalTasksCountByCreationTime(params);
+
+      expect(
+        mockMetricsDataPort.getTotalTasksCountByCreationTime
+      ).toHaveBeenCalledWith(6);
+      expect(result).toBe(8);
     });
   });
 

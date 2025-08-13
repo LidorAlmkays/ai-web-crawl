@@ -113,7 +113,7 @@ export class WebCrawlMetricsService {
         // Add trace event for Prometheus format generation
         this.traceManager.addEvent('prometheus_format_generation', {
           timeRangeHours: hours,
-          metricsCount: 4, // Number of metrics in the output
+          metricsCount: 5, // Number of metrics in the output
         });
 
         const prometheusFormat = `# HELP web_crawl_new_tasks_total Number of new web crawl tasks in the last ${hours}h
@@ -130,6 +130,10 @@ web_crawl_completed_tasks_total{time_range="${hours}h"} ${
 # TYPE web_crawl_error_tasks_total counter
 web_crawl_error_tasks_total{time_range="${hours}h"} ${metrics.errorTasksCount}
 
+# HELP web_crawl_total_tasks_count Total number of tasks created in time range
+# TYPE web_crawl_total_tasks_count gauge
+web_crawl_total_tasks_count{time_range="${hours}h"} ${metrics.totalTasksCount}
+
 # HELP web_crawl_metrics_timestamp Timestamp of the last metrics update
 # TYPE web_crawl_metrics_timestamp gauge
 web_crawl_metrics_timestamp{time_range="${hours}h"} ${Math.floor(
@@ -143,6 +147,7 @@ web_crawl_metrics_timestamp{time_range="${hours}h"} ${Math.floor(
             'new_tasks',
             'completed_tasks',
             'error_tasks',
+            'total_tasks',
             'timestamp',
           ],
         });
@@ -278,6 +283,51 @@ web_crawl_metrics_timestamp{time_range="${hours}h"} ${Math.floor(
       },
       {
         'business.operation': 'get_error_tasks_count',
+        'business.entity': 'metrics',
+        'metrics.time_range_hours':
+          params?.hours || metricsConfig.defaultTimeRangeHours,
+      }
+    );
+  }
+
+  /**
+   * Retrieves the count of all tasks created within a specified time range
+   *
+   * @param params - Optional query parameters for customizing the time range
+   * @returns Promise resolving to the count of all tasks created in the time range
+   *
+   * @example
+   * ```typescript
+   * const totalTasksCount = await service.getTotalTasksCountByCreationTime({ hours: 24 });
+   * console.log(`Total tasks created in last 24 hours: ${totalTasksCount}`);
+   * ```
+   */
+  async getTotalTasksCountByCreationTime(
+    params?: MetricsQueryParams
+  ): Promise<number> {
+    return this.traceManager.traceOperation(
+      'metrics.get_total_tasks_count_by_creation_time',
+      async () => {
+        const hours = params?.hours || metricsConfig.defaultTimeRangeHours;
+
+        // Add trace event for total tasks count retrieval
+        this.traceManager.addEvent('total_tasks_count_retrieval', {
+          timeRangeHours: hours,
+        });
+
+        const count =
+          await this.metricsDataPort.getTotalTasksCountByCreationTime(hours);
+
+        // Add trace event for successful count retrieval
+        this.traceManager.addEvent('total_tasks_count_retrieved', {
+          count,
+          timeRangeHours: hours,
+        });
+
+        return count;
+      },
+      {
+        'business.operation': 'get_total_tasks_count_by_creation_time',
         'business.entity': 'metrics',
         'metrics.time_range_hours':
           params?.hours || metricsConfig.defaultTimeRangeHours,

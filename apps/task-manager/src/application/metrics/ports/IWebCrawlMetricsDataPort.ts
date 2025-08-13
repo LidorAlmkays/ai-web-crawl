@@ -66,4 +66,18 @@ export interface IWebCrawlMetricsDataPort {
    * ```
    */
   getErrorTasksCount(hours: number): Promise<number>;
+
+  /**
+   * Retrieves the count of all tasks created within a specified time range
+   *
+   * @param hours - Number of hours to look back for the count
+   * @returns Promise resolving to the count of all tasks created in the time range
+   *
+   * @example
+   * ```typescript
+   * const totalTasksCount = await metricsDataPort.getTotalTasksCountByCreationTime(24);
+   * console.log(`Total tasks created in last 24 hours: ${totalTasksCount}`);
+   * ```
+   */
+  getTotalTasksCountByCreationTime(hours: number): Promise<number>;
 }

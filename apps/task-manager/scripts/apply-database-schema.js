@@ -118,6 +118,7 @@ async function applySchema() {
       'get_completed_tasks_count',
       'get_error_tasks_count',
       'get_tasks_count_by_status',
+      'get_total_tasks_count_by_creation_time',
       'get_web_crawl_metrics',
     ];
 
