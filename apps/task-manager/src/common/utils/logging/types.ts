@@ -1,4 +1,25 @@
-export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
+/**
+ * Log level enum for type-safe logging
+ * Provides centralized control over log levels and their string representations
+ *
+ * Log Level Hierarchy (from lowest to highest priority):
+ * DEBUG < INFO < WARN < ERROR < SUCCESS
+ *
+ * When LOG_LEVEL is configured, it acts as a MINIMUM threshold:
+ * - DEBUG: Most verbose (shows all levels)
+ * - INFO: Default level (hides DEBUG, shows INFO and above)
+ * - WARN: Shows warnings and errors only
+ * - ERROR: Shows errors and success messages only
+ * - SUCCESS: Shows only success messages
+ */
+export enum LogLevel {
+  DEBUG = 'debug', // Most verbose - shows all logs
+  INFO = 'info', // Default level - hides debug logs
+  WARN = 'warn', // Warnings and above only
+  ERROR = 'error', // Errors and above only
+  SUCCESS = 'success', // Success messages and above only
+}
+
 export type Environment = 'development' | 'production' | 'test';
 
 /**

@@ -2,6 +2,8 @@ import { KafkaClient } from '../../../common/clients/kafka-client';
 import { IHandler } from '../handlers/base-handler.interface';
 import { IConsumer } from './consumer.interface';
 import { logger } from '../../../common/utils/logger';
+import { KafkaTraceContext } from '../../../common/utils/tracing/kafka-trace-context';
+import { ILogger } from '../../../common/utils/logging/interfaces';
 
 /**
  * BaseConsumer provides common lifecycle implementation for all Kafka consumers.
@@ -129,5 +131,56 @@ export abstract class BaseConsumer implements IConsumer {
    */
   isConsuming(): boolean {
     return this.consuming;
+  }
+
+  /**
+   * Process message with trace context
+   *
+   * @param message - Kafka message
+   * @param handler - Message handler
+   * @param baseLogger - Base logger
+   */
+  protected async processMessageWithTrace(
+    message: any,
+    handler: IHandler,
+    baseLogger: ILogger = logger
+  ): Promise<void> {
+    const { traceContext, traceLogger, isNewTrace } =
+      KafkaTraceContext.processMessage(message.headers || {}, baseLogger);
+
+    try {
+      // Log message received with trace context
+      traceLogger.info('Kafka message received', {
+        topic: this.topic,
+        key: message.key?.toString(),
+        partition: message.partition,
+        offset: message.offset,
+        traceId: traceContext.traceId,
+        spanId: traceContext.spanId,
+        isNewTrace,
+      });
+
+      // Process message with trace-aware logger
+      await handler.process(message, traceLogger);
+
+      // Log message processed successfully
+      traceLogger.info('Kafka message processed successfully', {
+        topic: this.topic,
+        key: message.key?.toString(),
+        traceId: traceContext.traceId,
+        spanId: traceContext.spanId,
+      });
+    } catch (error) {
+      // Log error with trace context
+      traceLogger.error('Kafka message processing failed', {
+        topic: this.topic,
+        key: message.key?.toString(),
+        error: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+        traceId: traceContext.traceId,
+        spanId: traceContext.spanId,
+      });
+      throw error;
+    }
   }
 }

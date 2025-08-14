@@ -58,22 +58,23 @@ export class ConsoleFormatter {
   static getConsoleMethod(level: LogLevel): (...args: any[]) => void {
     // Single output strategy - direct process output works perfectly with nx serve
     switch (level) {
-      case 'error':
+      case LogLevel.ERROR:
         return (...args) => {
           const output = args.join(' ');
           process.stderr.write(output + '\n');
         };
-      case 'warn':
+      case LogLevel.WARN:
         return (...args) => {
           const output = args.join(' ');
           process.stdout.write(output + '\n');
         };
-      case 'debug':
+      case LogLevel.DEBUG:
         return (...args) => {
           const output = args.join(' ');
           process.stdout.write(output + '\n');
         };
-      case 'info':
+      case LogLevel.INFO:
+      case LogLevel.SUCCESS:
       default:
         return (...args) => {
           const output = args.join(' ');
@@ -122,14 +123,16 @@ export class OTELFormatter {
    */
   private static getSeverityNumber(level: LogLevel): number {
     switch (level) {
-      case 'debug':
+      case LogLevel.DEBUG:
         return 5; // DEBUG
-      case 'info':
+      case LogLevel.INFO:
         return 9; // INFO
-      case 'warn':
+      case LogLevel.WARN:
         return 13; // WARN
-      case 'error':
+      case LogLevel.ERROR:
         return 17; // ERROR
+      case LogLevel.SUCCESS:
+        return 9; // SUCCESS maps to INFO
       default:
         return 9; // Default to INFO
     }

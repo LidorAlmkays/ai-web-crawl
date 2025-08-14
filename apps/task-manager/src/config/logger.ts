@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { LogLevel } from '../common/utils/logging/types';
 
 /**
  * Logger Configuration Schema
@@ -9,7 +10,27 @@ import { z } from 'zod';
 const loggerConfigSchema = z.object({
   // Service identification
   SERVICE_NAME: z.string().default('task-manager'),
-  LOG_LEVEL: z.enum(['error', 'warn', 'info', 'debug']).default('info'),
+
+  /**
+   * LOG_LEVEL: Controls which log messages are displayed
+   *
+   * Log Level Hierarchy (from lowest to highest priority):
+   * DEBUG < INFO < WARN < ERROR < SUCCESS
+   *
+   * The configured level acts as a MINIMUM threshold:
+   * - If set to "info": Shows INFO, WARN, ERROR, SUCCESS (hides DEBUG)
+   * - If set to "debug": Shows all levels (DEBUG, INFO, WARN, ERROR, SUCCESS)
+   * - If set to "error": Shows only ERROR and SUCCESS (hides DEBUG, INFO, WARN)
+   *
+   * Examples:
+   * - LOG_LEVEL=debug → Most verbose (all logs shown)
+   * - LOG_LEVEL=info → Default (hides debug logs)
+   * - LOG_LEVEL=warn → Only warnings and errors
+   * - LOG_LEVEL=error → Only errors and success messages
+   */
+  LOG_LEVEL: z
+    .enum(['error', 'warn', 'info', 'debug', 'success'])
+    .default('info'),
   NODE_ENV: z.string().default('development'),
 
   // Console logging
@@ -39,7 +60,7 @@ const config = loggerConfigSchema.parse(process.env);
 export const loggerConfig = {
   // Service identification
   serviceName: config.SERVICE_NAME,
-  logLevel: config.LOG_LEVEL,
+  logLevel: config.LOG_LEVEL as LogLevel,
   environment: config.NODE_ENV as 'development' | 'production' | 'test',
 
   // Console output configuration

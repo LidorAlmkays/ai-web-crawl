@@ -4,6 +4,15 @@
 
 **NOT_COMPLETED**
 
+## Issues to Address
+
+Based on testing feedback, the following issues need to be fixed:
+
+1. **Correlation ID vs Trace ID**: Currently using `correlationId` in logs, but should use `traceId` from trace context
+2. **Timestamp Handling**: Database `received_at` uses current time instead of message header timestamp
+3. **Field Name**: Currently using `id` in headers, will be changed to `task_id` in future job
+4. **Validation**: Need to ensure proper validation when changing from `id` to `task_id`
+
 ## Overview
 
 Update the new task handler to integrate with the new DTO structure, trace context propagation, UUID generation, and web crawl request publishing. This job focuses on updating the handler to work with the refactored DTOs and new infrastructure.
@@ -56,25 +65,35 @@ export class NewTaskHandler {
     const traceContext = this.extractTraceContext(headers);
     const traceLogger = traceContext ? TraceLoggingUtils.enhanceLoggerWithTrace(this.logger, traceContext) : this.logger;
 
+    // Use traceId from trace context instead of correlationId
+    const traceId = traceContext?.traceId || 'unknown';
+    const taskId = headers.id || headers.task_id; // Support both current 'id' and future 'task_id'
+
     traceLogger.info('Processing new task creation', {
+      taskId,
+      traceId,
       userEmail: message.user_email,
       userQuery: message.user_query,
       baseUrl: message.base_url,
       status: headers.status,
+      messageTimestamp: headers.timestamp, // Log the original message timestamp
     });
 
     try {
-      // Create task with PostgreSQL UUID generation
+      // Create task with PostgreSQL UUID generation and message timestamp
       const task = await this.taskManagerService.createTask({
         userEmail: message.user_email,
         userQuery: message.user_query,
         baseUrl: message.base_url,
         status: headers.status,
+        receivedAt: headers.timestamp ? new Date(headers.timestamp) : new Date(), // Use message timestamp if available
       });
 
       traceLogger.info('Task created successfully', {
         taskId: task.id,
+        traceId,
         userEmail: task.user_email,
+        receivedAt: task.received_at,
       });
 
       // Publish web crawl request with trace context
@@ -82,10 +101,13 @@ export class NewTaskHandler {
 
       traceLogger.info('New task processing completed', {
         taskId: task.id,
+        traceId,
       });
     } catch (error) {
       traceLogger.error('Failed to process new task', {
         error: error.message,
+        taskId,
+        traceId,
         userEmail: message.user_email,
         baseUrl: message.base_url,
       });

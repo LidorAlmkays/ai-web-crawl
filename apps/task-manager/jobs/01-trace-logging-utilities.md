@@ -2,7 +2,418 @@
 
 ## Status
 
-**NOT_COMPLETED**
+**COMPLETED**
+
+## Sub-Jobs
+
+### Sub-Job 1.1: Span ID Generation Middleware (COMPLETED)
+
+**Objective**: Implement automatic span ID generation for incoming requests (HTTP and Kafka)
+
+**Problem**: Currently, we can extract trace context from incoming requests, but we don't automatically generate new span IDs for new requests. This means we can't properly track request flows through our system.
+
+**Solution**:
+
+1. Create HTTP middleware that generates span IDs for incoming requests
+2. Integrate span ID generation into Kafka consumer message processing
+3. Ensure all incoming requests get proper trace context with unique span IDs
+
+**Implementation Plan**:
+
+#### 1. HTTP Request Span ID Middleware
+
+**File**: `src/common/middleware/trace-context.middleware.ts`
+
+```typescript
+import { Request, Response, NextFunction } from 'express';
+import { TraceContextManager } from '../utils/tracing/trace-context';
+import { TraceContextExtractor } from '../utils/tracing/trace-context-extractor';
+import { logger } from '../utils/logger';
+
+/**
+ * Middleware to handle trace context for HTTP requests
+ *
+ * This middleware:
+ * 1. Extracts existing trace context from request headers (if present)
+ * 2. Generates new span ID for the current request
+ * 3. Creates trace-aware logger for the request
+ * 4. Attaches trace context to request object for downstream use
+ */
+export function traceContextMiddleware(req: Request, res: Response, next: NextFunction): void {
+  try {
+    // Extract existing trace context from headers
+    const existingContext = TraceContextExtractor.extractTraceContextFromKafkaHeaders(req.headers);
+
+    let traceContext: TraceContext;
+
+    if (existingContext) {
+      // If trace context exists, generate new span ID for this request
+      traceContext = TraceContextManager.createTraceContext(
+        existingContext.traceId,
+        undefined, // Generate new span ID
+        existingContext.traceFlags
+      );
+    } else {
+      // If no trace context, create completely new trace context
+      traceContext = TraceContextManager.createTraceContext();
+    }
+
+    // Create trace-aware logger for this request
+    const traceLogger = TraceContextExtractor.createTraceLoggerFromHeaders({ traceparent: TraceContextManager.formatW3CTraceContext(traceContext.traceId, traceContext.spanId, traceContext.traceFlags) }, logger);
+
+    // Attach trace context and logger to request object
+    (req as any).traceContext = traceContext;
+    (req as any).traceLogger = traceLogger;
+
+    // Log request with trace context
+    traceLogger.info('HTTP request received', {
+      method: req.method,
+      path: req.path,
+      ip: req.ip,
+      userAgent: req.get('User-Agent'),
+      traceId: traceContext.traceId,
+      spanId: traceContext.spanId,
+    });
+
+    next();
+  } catch (error) {
+    // Fallback to regular logger if trace context setup fails
+    logger.warn('Failed to setup trace context for HTTP request', {
+      error: error instanceof Error ? error.message : String(error),
+      method: req.method,
+      path: req.path,
+    });
+    next();
+  }
+}
+```
+
+#### 2. Kafka Consumer Span ID Integration
+
+**File**: `src/common/utils/tracing/kafka-trace-context.ts`
+
+```typescript
+import { TraceContextManager, TraceContext } from './trace-context';
+import { TraceContextExtractor } from './trace-context-extractor';
+import { ILogger } from '../logging/interfaces';
+
+/**
+ * Kafka message trace context utilities
+ *
+ * Provides utilities for handling trace context in Kafka consumer message processing
+ */
+export class KafkaTraceContext {
+  /**
+   * Process incoming Kafka message and generate new span ID
+   *
+   * @param headers - Kafka message headers
+   * @param baseLogger - Base logger instance
+   * @returns Object containing trace context and trace-aware logger
+   */
+  static processMessage(
+    headers: Record<string, any>,
+    baseLogger: ILogger
+  ): {
+    traceContext: TraceContext;
+    traceLogger: ILogger;
+    isNewTrace: boolean;
+  } {
+    // Extract existing trace context from headers
+    const existingContext = TraceContextExtractor.extractTraceContextFromKafkaHeaders(headers);
+
+    let traceContext: TraceContext;
+    let isNewTrace = false;
+
+    if (existingContext) {
+      // If trace context exists, generate new span ID for this message processing
+      traceContext = TraceContextManager.createTraceContext(
+        existingContext.traceId,
+        undefined, // Generate new span ID
+        existingContext.traceFlags
+      );
+    } else {
+      // If no trace context, create completely new trace context
+      traceContext = TraceContextManager.createTraceContext();
+      isNewTrace = true;
+    }
+
+    // Create trace-aware logger
+    const traceLogger = TraceContextExtractor.createTraceLoggerFromHeaders({ traceparent: TraceContextManager.formatW3CTraceContext(traceContext.traceId, traceContext.spanId, traceContext.traceFlags) }, baseLogger);
+
+    return {
+      traceContext,
+      traceLogger,
+      isNewTrace,
+    };
+  }
+
+  /**
+   * Create headers for outgoing Kafka messages with trace context
+   *
+   * @param existingHeaders - Existing headers to preserve
+   * @param traceContext - Current trace context
+   * @returns Headers with trace context injected
+   */
+  static createOutgoingHeaders(existingHeaders: Record<string, any> = {}, traceContext: TraceContext): Record<string, any> {
+    return TraceContextManager.injectIntoKafkaHeaders(existingHeaders, traceContext.traceId, traceContext.spanId, traceContext.traceFlags);
+  }
+}
+```
+
+#### 3. Update Base Consumer to Use Trace Context
+
+**File**: `src/api/kafka/consumers/base-consumer.ts` (enhancement)
+
+```typescript
+// Add to existing BaseConsumer class
+import { KafkaTraceContext } from '../../../common/utils/tracing/kafka-trace-context';
+
+export abstract class BaseConsumer implements IConsumer {
+  // ... existing code ...
+
+  /**
+   * Process message with trace context
+   *
+   * @param message - Kafka message
+   * @param handler - Message handler
+   * @param baseLogger - Base logger
+   */
+  protected async processMessageWithTrace(message: any, handler: IHandler, baseLogger: ILogger): Promise<void> {
+    const { traceContext, traceLogger, isNewTrace } = KafkaTraceContext.processMessage(message.headers || {}, baseLogger);
+
+    try {
+      // Log message received with trace context
+      traceLogger.info('Kafka message received', {
+        topic: this.topic,
+        key: message.key?.toString(),
+        partition: message.partition,
+        offset: message.offset,
+        traceId: traceContext.traceId,
+        spanId: traceContext.spanId,
+        isNewTrace,
+      });
+
+      // Process message with trace-aware logger
+      await handler.process(message, traceLogger);
+
+      // Log message processed successfully
+      traceLogger.info('Kafka message processed successfully', {
+        topic: this.topic,
+        key: message.key?.toString(),
+        traceId: traceContext.traceId,
+        spanId: traceContext.spanId,
+      });
+    } catch (error) {
+      // Log error with trace context
+      traceLogger.error('Kafka message processing failed', {
+        topic: this.topic,
+        key: message.key?.toString(),
+        error: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+        traceId: traceContext.traceId,
+        spanId: traceContext.spanId,
+      });
+      throw error;
+    }
+  }
+}
+```
+
+#### 4. Update REST Router to Use Trace Middleware
+
+**File**: `src/api/rest/rest.router.ts` (enhancement)
+
+```typescript
+import { traceContextMiddleware } from '../../common/middleware/trace-context.middleware';
+
+export function createRestRouter(healthCheckService: IHealthCheckService, metricsService: WebCrawlMetricsService): Router {
+  const router = Router();
+
+  // Add trace context middleware (must be first)
+  router.use(traceContextMiddleware);
+
+  // Add request logging middleware (now uses trace-aware logger)
+  router.use((req, res, next) => {
+    const traceLogger = (req as any).traceLogger || logger;
+    traceLogger.debug('REST API request', {
+      method: req.method,
+      path: req.path,
+      ip: req.ip,
+      userAgent: req.get('User-Agent'),
+    });
+    next();
+  });
+
+  // ... rest of existing code ...
+}
+```
+
+#### 5. Update Handler Interface to Support Trace Logger
+
+**File**: `src/api/kafka/handlers/base-handler.interface.ts` (enhancement)
+
+```typescript
+import { ILogger } from '../../../common/utils/logging/interfaces';
+
+export interface IHandler {
+  /**
+   * Process a message with optional trace-aware logger
+   *
+   * @param message - The message to process
+   * @param traceLogger - Optional trace-aware logger (if not provided, use default logger)
+   */
+  process(message: any, traceLogger?: ILogger): Promise<void>;
+}
+```
+
+**Testing Strategy**:
+
+#### Unit Tests
+
+**File**: `src/common/middleware/__tests__/trace-context.middleware.spec.ts`
+
+```typescript
+import { traceContextMiddleware } from '../trace-context.middleware';
+import { Request, Response, NextFunction } from 'express';
+import { TraceContextManager } from '../../utils/tracing/trace-context';
+
+describe('traceContextMiddleware', () => {
+  let mockReq: Partial<Request>;
+  let mockRes: Partial<Response>;
+  let mockNext: NextFunction;
+
+  beforeEach(() => {
+    mockReq = {
+      method: 'GET',
+      path: '/test',
+      ip: '127.0.0.1',
+      headers: {},
+      get: jest.fn(),
+    };
+    mockRes = {};
+    mockNext = jest.fn();
+  });
+
+  it('should generate new trace context when none exists', () => {
+    traceContextMiddleware(mockReq as Request, mockRes as Response, mockNext);
+
+    expect(mockNext).toHaveBeenCalled();
+    expect((mockReq as any).traceContext).toBeDefined();
+    expect((mockReq as any).traceLogger).toBeDefined();
+    expect((mockReq as any).traceContext.traceId).toMatch(/^[a-f0-9]{32}$/i);
+    expect((mockReq as any).traceContext.spanId).toMatch(/^[a-f0-9]{16}$/i);
+  });
+
+  it('should preserve trace ID but generate new span ID when trace context exists', () => {
+    const existingTraceId = '1234567890abcdef1234567890abcdef';
+    const existingSpanId = '1234567890abcdef';
+
+    mockReq.headers = {
+      traceparent: `00-${existingTraceId}-${existingSpanId}-01`,
+    };
+
+    traceContextMiddleware(mockReq as Request, mockRes as Response, mockNext);
+
+    expect(mockNext).toHaveBeenCalled();
+    expect((mockReq as any).traceContext.traceId).toBe(existingTraceId);
+    expect((mockReq as any).traceContext.spanId).not.toBe(existingSpanId);
+    expect((mockReq as any).traceContext.spanId).toMatch(/^[a-f0-9]{16}$/i);
+  });
+
+  it('should handle errors gracefully', () => {
+    mockReq.headers = { traceparent: 'invalid-format' };
+
+    expect(() => {
+      traceContextMiddleware(mockReq as Request, mockRes as Response, mockNext);
+    }).not.toThrow();
+
+    expect(mockNext).toHaveBeenCalled();
+  });
+});
+```
+
+#### Integration Tests
+
+**File**: `src/common/utils/tracing/__tests__/kafka-trace-context.spec.ts`
+
+```typescript
+import { KafkaTraceContext } from '../kafka-trace-context';
+import { TraceContextManager } from '../trace-context';
+import { ILogger } from '../../logging/interfaces';
+
+describe('KafkaTraceContext', () => {
+  let mockLogger: jest.Mocked<ILogger>;
+
+  beforeEach(() => {
+    mockLogger = {
+      info: jest.fn(),
+      warn: jest.fn(),
+      error: jest.fn(),
+      debug: jest.fn(),
+      success: jest.fn(),
+      child: jest.fn().mockReturnThis(),
+    };
+  });
+
+  describe('processMessage', () => {
+    it('should create new trace context when none exists', () => {
+      const result = KafkaTraceContext.processMessage({}, mockLogger);
+
+      expect(result.traceContext).toBeDefined();
+      expect(result.traceLogger).toBeDefined();
+      expect(result.isNewTrace).toBe(true);
+      expect(result.traceContext.traceId).toMatch(/^[a-f0-9]{32}$/i);
+      expect(result.traceContext.spanId).toMatch(/^[a-f0-9]{16}$/i);
+    });
+
+    it('should preserve trace ID but generate new span ID when trace context exists', () => {
+      const existingTraceId = '1234567890abcdef1234567890abcdef';
+      const existingSpanId = '1234567890abcdef';
+
+      const headers = {
+        traceparent: `00-${existingTraceId}-${existingSpanId}-01`,
+      };
+
+      const result = KafkaTraceContext.processMessage(headers, mockLogger);
+
+      expect(result.traceContext.traceId).toBe(existingTraceId);
+      expect(result.traceContext.spanId).not.toBe(existingSpanId);
+      expect(result.isNewTrace).toBe(false);
+    });
+  });
+
+  describe('createOutgoingHeaders', () => {
+    it('should inject trace context into headers', () => {
+      const traceContext = TraceContextManager.createTraceContext();
+      const existingHeaders = { 'custom-header': 'value' };
+
+      const result = KafkaTraceContext.createOutgoingHeaders(existingHeaders, traceContext);
+
+      expect(result['custom-header']).toBe('value');
+      expect(result.traceparent).toContain(traceContext.traceId);
+      expect(result.traceparent).toContain(traceContext.spanId);
+    });
+  });
+});
+```
+
+**Success Criteria**:
+
+- [ ] HTTP requests automatically get span IDs generated
+- [ ] Kafka messages automatically get span IDs generated
+- [ ] Trace context is properly propagated through the system
+- [ ] All logs include trace ID and span ID
+- [ ] Middleware handles errors gracefully
+- [ ] Unit tests pass
+- [ ] Integration tests pass
+- [ ] Performance impact is minimal (<1ms per request)
+
+**Dependencies**:
+
+- Job 01 (Trace Logging Utilities) - COMPLETED ✅
+- Existing trace context utilities
+
+**Estimated Effort**: 0.5 days
 
 ## Overview
 

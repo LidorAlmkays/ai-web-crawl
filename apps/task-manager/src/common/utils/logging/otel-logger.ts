@@ -36,35 +36,35 @@ export class OTELLogger implements ILogger {
    * Log info level message
    */
   info(message: string, metadata?: Record<string, any>): void {
-    this.log('info', message, metadata);
+    this.log(LogLevel.INFO, message, metadata);
   }
 
   /**
    * Log warning level message
    */
   warn(message: string, metadata?: Record<string, any>): void {
-    this.log('warn', message, metadata);
+    this.log(LogLevel.WARN, message, metadata);
   }
 
   /**
    * Log error level message
    */
   error(message: string, metadata?: Record<string, any>): void {
-    this.log('error', message, metadata);
+    this.log(LogLevel.ERROR, message, metadata);
   }
 
   /**
    * Log debug level message
    */
   debug(message: string, metadata?: Record<string, any>): void {
-    this.log('debug', message, metadata);
+    this.log(LogLevel.DEBUG, message, metadata);
   }
 
   /**
    * Log success level message (maps to info level for compatibility)
    */
   success(message: string, metadata?: Record<string, any>): void {
-    this.log('info', message, { ...metadata, logType: 'success' });
+    this.log(LogLevel.SUCCESS, message, { ...metadata, logType: 'success' });
   }
 
   /**
@@ -107,9 +107,26 @@ export class OTELLogger implements ILogger {
 
   /**
    * Check if we should log based on configured log level
+   *
+   * Log Level Hierarchy (from lowest to highest priority):
+   * DEBUG < INFO < WARN < ERROR < SUCCESS
+   *
+   * The configured level acts as a MINIMUM threshold:
+   * - If LOG_LEVEL=info: Shows INFO, WARN, ERROR, SUCCESS (hides DEBUG)
+   * - If LOG_LEVEL=debug: Shows all levels (DEBUG, INFO, WARN, ERROR, SUCCESS)
+   * - If LOG_LEVEL=error: Shows only ERROR and SUCCESS (hides DEBUG, INFO, WARN)
+   *
+   * @param level - The log level to check
+   * @returns true if the level should be logged, false otherwise
    */
   private shouldLog(level: LogLevel): boolean {
-    const levels: LogLevel[] = ['debug', 'info', 'warn', 'error'];
+    const levels: LogLevel[] = [
+      LogLevel.DEBUG, // index 0 - Most verbose
+      LogLevel.INFO, // index 1 - Default level
+      LogLevel.WARN, // index 2 - Warnings and above
+      LogLevel.ERROR, // index 3 - Errors and above
+      LogLevel.SUCCESS, // index 4 - Success messages and above
+    ];
     const currentLevelIndex = levels.indexOf(this.config.logLevel);
     const logLevelIndex = levels.indexOf(level);
     return logLevelIndex >= currentLevelIndex;
@@ -251,10 +268,11 @@ export class OTELLogger implements ILogger {
    */
   private getSeverityNumber(level: LogLevel): number {
     const severityMap = {
-      debug: 5, // DEBUG
-      info: 9, // INFO
-      warn: 13, // WARN
-      error: 17, // ERROR
+      [LogLevel.DEBUG]: 5, // DEBUG
+      [LogLevel.INFO]: 9, // INFO
+      [LogLevel.WARN]: 13, // WARN
+      [LogLevel.ERROR]: 17, // ERROR
+      [LogLevel.SUCCESS]: 9, // SUCCESS maps to INFO
     };
     return severityMap[level] || 9;
   }
@@ -358,5 +376,10 @@ class ChildLogger implements ILogger {
 
   success(message: string, metadata?: Record<string, any>): void {
     this.parent.success(message, { ...this.additionalContext, ...metadata });
+  }
+
+  child(additionalContext: Record<string, any>): ILogger {
+    const combinedContext = { ...this.additionalContext, ...additionalContext };
+    return new ChildLogger(this.parent, combinedContext);
   }
 }

@@ -53,6 +53,38 @@ class FallbackLogger {
     );
     if (metadata) console.log(JSON.stringify(metadata, null, 2));
   }
+
+  child(additionalContext: Record<string, any>): any {
+    // Create a new fallback logger with additional context
+    const childLogger = new FallbackLogger();
+    return {
+      ...childLogger,
+      info: (message: string, metadata?: any) => {
+        const combinedMetadata = { ...additionalContext, ...metadata };
+        childLogger.info(message, combinedMetadata);
+      },
+      warn: (message: string, metadata?: any) => {
+        const combinedMetadata = { ...additionalContext, ...metadata };
+        childLogger.warn(message, combinedMetadata);
+      },
+      error: (message: string, metadata?: any) => {
+        const combinedMetadata = { ...additionalContext, ...metadata };
+        childLogger.error(message, combinedMetadata);
+      },
+      debug: (message: string, metadata?: any) => {
+        const combinedMetadata = { ...additionalContext, ...metadata };
+        childLogger.debug(message, combinedMetadata);
+      },
+      success: (message: string, metadata?: any) => {
+        const combinedMetadata = { ...additionalContext, ...metadata };
+        childLogger.success(message, combinedMetadata);
+      },
+      child: (additionalContext2: Record<string, any>) => {
+        const combinedContext = { ...additionalContext, ...additionalContext2 };
+        return childLogger.child(combinedContext);
+      },
+    };
+  }
 }
 
 // Start with fallback logger
@@ -103,4 +135,6 @@ export const logger = {
     currentLogger.debug(message, metadata),
   success: (message: string, metadata?: any) =>
     currentLogger.success(message, metadata),
+  child: (additionalContext: Record<string, any>) =>
+    currentLogger.child(additionalContext),
 };

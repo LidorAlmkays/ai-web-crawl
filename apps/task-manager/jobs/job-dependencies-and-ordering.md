@@ -44,6 +44,9 @@ Job 09 (Integration Testing)
 - Trace context extraction utilities
 - Logger enhancement capabilities
 - Trace validation functions
+- HTTP trace context middleware
+- Kafka trace context processing utilities
+- Automatic span ID generation for requests
 
 **Required by**: Jobs 06, 07, 08
 
@@ -150,6 +153,19 @@ Job 09 (Integration Testing)
 - Trace context verification
 - DTO validation testing
 
+### Job 10: Field Name Standardization (id → task_id)
+
+**Status**: Enhancement Job
+**Dependencies**: Jobs 01, 04, 05, 07
+**Provides**:
+
+- Standardized field naming (task_id instead of id)
+- Backward compatibility for id field
+- Enhanced validation for task_id
+- Consistent logging with taskId
+- Proper timestamp handling from message headers
+- Updated tests for new field naming
+
 ## Implementation Phases
 
 ### Phase 1: Foundation (Jobs 01-05)
@@ -195,6 +211,25 @@ Job 09 (Integration Testing)
 **Objective**: Comprehensive testing and validation
 
 **Jobs to complete**:
+
+1. Job 09: Integration Testing
+
+### Phase 4: Field Standardization (Job 10)
+
+**Duration**: 1.5 days
+**Objective**: Standardize field naming and fix identified issues
+
+**Jobs to complete**:
+
+1. Job 10: Field Name Standardization (id → task_id)
+
+**Success Criteria**:
+
+- All field names are standardized to task_id
+- Backward compatibility is maintained
+- Logging uses traceId instead of correlationId
+- Message timestamps are properly handled
+- All tests pass with new field naming
 
 1. Job 09: Integration Testing
 

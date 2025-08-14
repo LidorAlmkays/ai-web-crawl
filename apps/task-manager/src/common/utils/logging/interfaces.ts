@@ -39,6 +39,13 @@ export interface ILogger {
    * @param metadata - Optional metadata object for structured logging
    */
   success(message: string, metadata?: Record<string, any>): void;
+
+  /**
+   * Create a child logger with additional context
+   * @param additionalContext - Additional context to add to all log messages
+   * @returns A new logger instance with the additional context
+   */
+  child(additionalContext: Record<string, any>): ILogger;
 }
 
 /**

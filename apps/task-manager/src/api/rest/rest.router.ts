@@ -3,6 +3,7 @@ import { createHealthCheckRouter } from './health-check.router';
 import { IHealthCheckService } from '../../common/health/health-check.interface';
 import { WebCrawlMetricsService } from '../../application/metrics/services/WebCrawlMetricsService';
 import { logger } from '../../common/utils/logger';
+import { traceContextMiddleware } from '../../common/middleware/trace-context.middleware';
 
 /**
  * Main REST API router
@@ -14,9 +15,13 @@ export function createRestRouter(
 ): Router {
   const router = Router();
 
-  // Add request logging middleware
+  // Add trace context middleware (must be first)
+  router.use(traceContextMiddleware);
+
+  // Add request logging middleware (now uses trace-aware logger)
   router.use((req, res, next) => {
-    logger.debug('REST API request', {
+    const traceLogger = (req as any).traceLogger || logger;
+    traceLogger.debug('REST API request', {
       method: req.method,
       path: req.path,
       ip: req.ip,
