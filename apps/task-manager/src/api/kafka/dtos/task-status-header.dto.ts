@@ -8,7 +8,7 @@ import { BaseTaskHeaderDto } from './base-task-header.dto';
 export class TaskStatusHeaderDto extends BaseTaskHeaderDto {
   @IsUUID()
   @IsNotEmpty()
-  id!: string;
+  task_id!: string;
 }
 
 // Export type alias for the class

@@ -132,7 +132,7 @@ export class CompleteTaskHandler extends BaseHandler {
               'TASK_COMPLETION_ERROR',
               {
                 correlationId,
-                taskId: this.extractHeaders(message.message.headers).id,
+                taskId: this.extractHeaders(message.message.headers).task_id,
               }
             )
           );

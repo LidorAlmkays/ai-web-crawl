@@ -17,8 +17,12 @@ import { v4 as uuidv4 } from 'uuid';
 export interface TestTaskData {
   id: string;
   status: 'new' | 'completed' | 'error';
-  url: string;
-  metadata?: Record<string, any>;
+  user_email: string;
+  user_query: string;
+  original_url: string;
+  received_at?: Date;
+  data?: string;
+  finished_at?: Date;
   created_at?: Date;
   updated_at?: Date;
 }
@@ -136,23 +140,31 @@ export class DatabaseTestHelper {
     const taskData: TestTaskData = {
       id: taskId,
       status: data.status || 'new',
-      url: data.url || 'https://example.com',
-      metadata: data.metadata || {},
+      user_email: data.user_email || 'test@example.com',
+      user_query: data.user_query || 'Test query',
+      original_url: data.original_url || 'https://example.com',
+      received_at: data.received_at || new Date(),
+      data: data.data,
+      finished_at: data.finished_at,
       created_at: data.created_at || new Date(),
       updated_at: data.updated_at || new Date(),
     };
 
     const query = `
-      INSERT INTO web_crawl_tasks (id, status, url, metadata, created_at, updated_at)
-      VALUES ($1, $2, $3, $4, $5, $6)
+      INSERT INTO web_crawl_tasks (id, status, user_email, user_query, original_url, received_at, data, finished_at, created_at, updated_at)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
       RETURNING *
     `;
 
     const values = [
       taskData.id,
       taskData.status,
-      taskData.url,
-      JSON.stringify(taskData.metadata),
+      taskData.user_email,
+      taskData.user_query,
+      taskData.original_url,
+      taskData.received_at,
+      taskData.data,
+      taskData.finished_at,
       taskData.created_at,
       taskData.updated_at,
     ];
@@ -279,7 +291,7 @@ export class DatabaseTestHelper {
    * ```
    */
   async cleanupTestDataWithPrefix(): Promise<void> {
-    const query = 'DELETE FROM web_crawl_tasks WHERE id LIKE $1';
+    const query = 'DELETE FROM web_crawl_tasks WHERE id::text LIKE $1';
     await this.pool.query(query, [`${this.testPrefix}%`]);
   }
 

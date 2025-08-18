@@ -130,7 +130,7 @@ export class ErrorTaskHandler extends BaseHandler {
             'TASK_ERROR_PROCESSING_ERROR',
             {
               correlationId,
-              taskId: this.extractHeaders(message.message.headers).id,
+                              taskId: this.extractHeaders(message.message.headers).task_id,
             }
           )
         );

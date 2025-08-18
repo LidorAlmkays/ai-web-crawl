@@ -151,7 +151,7 @@ export abstract class BaseHandler implements IHandler {
   ): string {
     const id = correlationId || this.generateCorrelationId();
     const headers = this.extractHeaders(message.message.headers);
-    const taskId = headers.id || headers.taskId;
+    const taskId = headers.task_id;
     const eventType = this.extractEventType(message);
 
     // Log event reception at INFO level
@@ -189,7 +189,7 @@ export abstract class BaseHandler implements IHandler {
     result?: any
   ): void {
     const headers = this.extractHeaders(message.message.headers);
-    const taskId = headers.id || headers.taskId;
+    const taskId = headers.task_id;
 
     // Log processing success at DEBUG level only
     logger.debug(`Message processed successfully by ${handlerName}`, {
@@ -267,7 +267,7 @@ export abstract class BaseHandler implements IHandler {
     processingStage = 'PROCESSING'
   ): void {
     const headers = this.extractHeaders(message.message.headers);
-    const taskId = headers.id || headers.taskId;
+    const taskId = headers.task_id;
     const stackedErrorHandler = getStackedErrorHandler();
 
     // Initialize stacked error context
@@ -311,7 +311,7 @@ export abstract class BaseHandler implements IHandler {
     correlationId: string
   ): Promise<T> {
     const headers = this.extractHeaders(message.message.headers);
-    const taskId = headers.id || headers.taskId;
+    const taskId = headers.task_id;
 
     const result = await validateDto(dtoClass, data, taskId);
 
@@ -360,7 +360,7 @@ export abstract class BaseHandler implements IHandler {
     correlationId: string
   ): void {
     const headers = this.extractHeaders(message.message.headers);
-    const taskId = headers.id || headers.taskId;
+    const taskId = headers.task_id;
     const receivedData = message.message.value?.toString();
     const errorDetails = this.formatValidationErrors(validationErrors);
 
@@ -440,7 +440,7 @@ export abstract class BaseHandler implements IHandler {
     operation: string
   ): Record<string, any> {
     const headers = this.extractHeaders(message.message.headers);
-    const taskId = headers.id || headers.taskId;
+    const taskId = headers.task_id;
     const eventType = this.extractEventType(message);
 
     return TraceAttributes.createKafkaAttributes(

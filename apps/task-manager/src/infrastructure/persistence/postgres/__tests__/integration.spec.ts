@@ -11,7 +11,7 @@ describe('Database Integration Tests', () => {
     const config = {
       host: process.env.DB_HOST || 'localhost',
       port: parseInt(process.env.DB_PORT || '5432'),
-      database: process.env.DB_NAME || 'webcrawling', // Use existing database
+      database: process.env.DB_NAME || 'tasks_manager', // Use existing database
       user: process.env.DB_USER || 'postgres',
       password: process.env.DB_PASSWORD || 'password',
     };
@@ -57,28 +57,34 @@ describe('Database Integration Tests', () => {
   describe('Task Creation and Retrieval', () => {
     it('should create a task with valid data', async () => {
       const taskData: Partial<TestTaskData> = {
-        id: 'test-550e8400-e29b-41d4-a716-446655440000',
+        id: '550e8400-e29b-41d4-a716-446655440000',
         status: 'new',
-        url: 'https://example.com',
-        metadata: { test: true, priority: 'high' },
+        user_email: 'test@example.com',
+        user_query: 'Test query',
+        original_url: 'https://example.com',
+        data: JSON.stringify({ test: true, priority: 'high' }),
       };
 
       const createdTask = await dbHelper.createTestTask(taskData);
 
       expect(createdTask.id).toBe(taskData.id);
       expect(createdTask.status).toBe(taskData.status);
-      expect(createdTask.url).toBe(taskData.url);
-      expect(createdTask.metadata).toEqual(taskData.metadata);
+      expect(createdTask.user_email).toBe(taskData.user_email);
+      expect(createdTask.user_query).toBe(taskData.user_query);
+      expect(createdTask.original_url).toBe(taskData.original_url);
+      expect(createdTask.data).toBe(taskData.data);
       expect(createdTask.created_at).toBeDefined();
       expect(createdTask.updated_at).toBeDefined();
     });
 
     it('should find a task by ID', async () => {
       const taskData: Partial<TestTaskData> = {
-        id: 'test-550e8400-e29b-41d4-a716-446655440001',
+        id: '550e8400-e29b-41d4-a716-446655440001',
         status: 'new',
-        url: 'https://test.com',
-        metadata: { search: true },
+        user_email: 'test@example.com',
+        user_query: 'Test query',
+        original_url: 'https://test.com',
+        data: JSON.stringify({ search: true }),
       };
 
       await dbHelper.createTestTask(taskData);
@@ -87,30 +93,30 @@ describe('Database Integration Tests', () => {
       expect(foundTask).toBeDefined();
       expect(foundTask!.id).toBe(taskData.id);
       expect(foundTask!.status).toBe(taskData.status);
-      expect(foundTask!.url).toBe(taskData.url);
+      expect(foundTask!.original_url).toBe(taskData.original_url);
     });
 
     it('should return null for non-existent task ID', async () => {
-      const foundTask = await dbHelper.findTaskById('non-existent-id');
+      const foundTask = await dbHelper.findTaskById('550e8400-e29b-41d4-a716-446655440999');
       expect(foundTask).toBeNull();
     });
 
     it('should count tasks by status', async () => {
       // Create tasks with different statuses
       await dbHelper.createTestTask({
-        id: 'test-550e8400-e29b-41d4-a716-446655440002',
+        id: '550e8400-e29b-41d4-a716-446655440002',
         status: 'new',
         url: 'https://example1.com',
       });
 
       await dbHelper.createTestTask({
-        id: 'test-550e8400-e29b-41d4-a716-446655440003',
+        id: '550e8400-e29b-41d4-a716-446655440003',
         status: 'new',
         url: 'https://example2.com',
       });
 
       await dbHelper.createTestTask({
-        id: 'test-550e8400-e29b-41d4-a716-446655440004',
+        id: '550e8400-e29b-41d4-a716-446655440004',
         status: 'completed',
         url: 'https://example3.com',
       });
@@ -128,7 +134,7 @@ describe('Database Integration Tests', () => {
   describe('Task Updates', () => {
     it('should update task status', async () => {
       const taskData: Partial<TestTaskData> = {
-        id: 'test-550e8400-e29b-41d4-a716-446655440005',
+        id: '550e8400-e29b-41d4-a716-446655440005',
         status: 'new',
         url: 'https://example.com',
       };
@@ -145,7 +151,7 @@ describe('Database Integration Tests', () => {
 
     it('should handle multiple status updates', async () => {
       const taskData: Partial<TestTaskData> = {
-        id: 'test-550e8400-e29b-41d4-a716-446655440006',
+        id: '550e8400-e29b-41d4-a716-446655440006',
         status: 'new',
         url: 'https://example.com',
       };
@@ -175,7 +181,7 @@ describe('Database Integration Tests', () => {
 
   describe('Error Scenarios', () => {
     it('should handle duplicate UUID gracefully', async () => {
-      const taskId = 'test-550e8400-e29b-41d4-a716-446655440007';
+      const taskId = '550e8400-e29b-41d4-a716-446655440007';
       const taskData: Partial<TestTaskData> = {
         id: taskId,
         status: 'new',
@@ -191,7 +197,7 @@ describe('Database Integration Tests', () => {
 
     it('should handle invalid enum values', async () => {
       const taskData: Partial<TestTaskData> = {
-        id: 'test-550e8400-e29b-41d4-a716-446655440008',
+        id: '550e8400-e29b-41d4-a716-446655440008',
         status: 'invalid-status' as any, // Invalid enum value
         url: 'https://example.com',
       };
@@ -203,7 +209,7 @@ describe('Database Integration Tests', () => {
     it('should handle very long URLs', async () => {
       const longUrl = 'https://example.com/' + 'a'.repeat(3000);
       const taskData: Partial<TestTaskData> = {
-        id: 'test-550e8400-e29b-41d4-a716-446655440009',
+        id: '550e8400-e29b-41d4-a716-446655440009',
         status: 'new',
         url: longUrl,
       };
@@ -252,23 +258,23 @@ describe('Database Integration Tests', () => {
     it('should clean up test data with prefix', async () => {
       // Create some test tasks
       await dbHelper.createTestTask({
-        id: 'test-550e8400-e29b-41d4-a716-446655440010',
+        id: '550e8400-e29b-41d4-a716-446655440010',
         status: 'new',
         url: 'https://cleanup-test.com',
       });
 
       await dbHelper.createTestTask({
-        id: 'test-550e8400-e29b-41d4-a716-446655440011',
+        id: '550e8400-e29b-41d4-a716-446655440011',
         status: 'completed',
         url: 'https://cleanup-test2.com',
       });
 
       // Verify tasks exist
       const task1 = await dbHelper.findTaskById(
-        'test-550e8400-e29b-41d4-a716-446655440010'
+        '550e8400-e29b-41d4-a716-446655440010'
       );
       const task2 = await dbHelper.findTaskById(
-        'test-550e8400-e29b-41d4-a716-446655440011'
+        '550e8400-e29b-41d4-a716-446655440011'
       );
       expect(task1).toBeDefined();
       expect(task2).toBeDefined();
@@ -278,10 +284,10 @@ describe('Database Integration Tests', () => {
 
       // Verify tasks are gone
       const task1After = await dbHelper.findTaskById(
-        'test-550e8400-e29b-41d4-a716-446655440010'
+        '550e8400-e29b-41d4-a716-446655440010'
       );
       const task2After = await dbHelper.findTaskById(
-        'test-550e8400-e29b-41d4-a716-446655440011'
+        '550e8400-e29b-41d4-a716-446655440011'
       );
       expect(task1After).toBeNull();
       expect(task2After).toBeNull();
@@ -308,7 +314,7 @@ describe('Database Integration Tests', () => {
       };
 
       const taskData: Partial<TestTaskData> = {
-        id: 'test-550e8400-e29b-41d4-a716-446655440012',
+        id: '550e8400-e29b-41d4-a716-446655440012',
         status: 'new',
         url: 'https://example.com',
         metadata: complexMetadata,
@@ -326,7 +332,7 @@ describe('Database Integration Tests', () => {
       };
 
       const taskData: Partial<TestTaskData> = {
-        id: 'test-550e8400-e29b-41d4-a716-446655440013',
+        id: '550e8400-e29b-41d4-a716-446655440013',
         status: 'new',
         url: 'https://example.com',
         metadata: unicodeMetadata,
