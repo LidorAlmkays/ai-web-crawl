@@ -1,7 +1,7 @@
 import { Pool } from 'pg';
 import { IWebCrawlTaskRepositoryPort } from '../../ports/web-crawl-task-repository.port';
 import { WebCrawlTaskRepositoryAdapter } from './adapters/web-crawl-task.repository.adapter';
-import { IWebCrawlMetricsDataPort } from '../../../application/metrics/ports/IWebCrawlMetricsDataPort';
+import { IWebCrawlMetricsDataPort } from '../../ports/web-crawl-metrics-data.port';
 import { WebCrawlMetricsAdapter } from './adapters/WebCrawlMetricsAdapter';
 import { logger } from '../../../common/utils/logger';
 import { PostgresConfigType } from '../../../config/postgres';

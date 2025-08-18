@@ -1,14 +1,17 @@
-import { WebCrawlMetrics } from '../../../domain/types/metrics.types';
+import { WebCrawlMetrics } from '../../domain/types/metrics.types';
 
 /**
  * Web Crawl Metrics Data Port Interface
  *
- * Defines the contract for metrics data operations in the application layer.
+ * Defines the contract for metrics data operations in the infrastructure layer.
  * This interface is implemented by infrastructure adapters to provide
  * metrics data access capabilities.
  *
  * The port follows the Clean Architecture pattern and abstracts the
  * data access layer from the application services.
+ *
+ * NOTE: This port has been moved from application layer to infrastructure layer
+ * because it's implemented by infrastructure adapters and used by application services.
  */
 export interface IWebCrawlMetricsDataPort {
   /**

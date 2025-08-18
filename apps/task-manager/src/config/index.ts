@@ -18,3 +18,11 @@ export * from './postgres';
 export * from './kafka';
 export * from './app';
 export * from './logger';
+
+// Kafka Topic Configuration - simple dictionary
+export { kafkaTopicConfig } from './kafka-topics';
+
+// Logger Level Enum
+export { LoggerLevel } from '../common/enums/logger-level.enum';
+
+export type { KafkaTopicsConfig, KafkaTopicConfig as KafkaTopicConfigType, TopicValidationResult } from '../common/types';

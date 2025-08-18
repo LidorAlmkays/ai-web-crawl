@@ -1,4 +1,4 @@
-import { IWebCrawlMetricsDataPort } from '../ports/IWebCrawlMetricsDataPort';
+import { IWebCrawlMetricsDataPort } from '../../../infrastructure/ports/web-crawl-metrics-data.port';
 import {
   WebCrawlMetrics,
   MetricsQueryParams,

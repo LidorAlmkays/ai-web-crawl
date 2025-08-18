@@ -1,7 +1,7 @@
 import { IWebCrawlTaskManagerPort } from '../ports/web-crawl-task-manager.port';
 import { WebCrawlTaskManagerService } from './web-crawl-task-manager.service';
 import { IWebCrawlTaskRepositoryPort } from '../../infrastructure/ports/web-crawl-task-repository.port';
-import { IWebCrawlMetricsDataPort } from '../metrics/ports/IWebCrawlMetricsDataPort';
+import { IWebCrawlMetricsDataPort } from '../../infrastructure/ports/web-crawl-metrics-data.port';
 import { WebCrawlMetricsService } from '../metrics/services/WebCrawlMetricsService';
 import { logger } from '../../common/utils/logger';
 

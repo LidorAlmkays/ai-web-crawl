@@ -1,5 +1,6 @@
 import { LoggerFactory } from './logging';
 import { loggerConfig } from '../../config/logger';
+import { LoggerLevel } from '../enums/logger-level.enum';
 
 /**
  * Global logger instance for the task-manager application
@@ -17,7 +18,7 @@ class FallbackLogger {
   info(message: string, metadata?: any): void {
     const timestamp = new Date().toISOString();
     console.log(
-      `[level:info,service:task-manager,timestamp:${timestamp}]:${message}`
+      `[level:${LoggerLevel.INFO},service:task-manager,timestamp:${timestamp}]:${message}`
     );
     if (metadata) console.log(JSON.stringify(metadata, null, 2));
   }
@@ -25,7 +26,7 @@ class FallbackLogger {
   warn(message: string, metadata?: any): void {
     const timestamp = new Date().toISOString();
     console.warn(
-      `[level:warn,service:task-manager,timestamp:${timestamp}]:${message}`
+      `[level:${LoggerLevel.WARN},service:task-manager,timestamp:${timestamp}]:${message}`
     );
     if (metadata) console.warn(JSON.stringify(metadata, null, 2));
   }
@@ -33,7 +34,7 @@ class FallbackLogger {
   error(message: string, metadata?: any): void {
     const timestamp = new Date().toISOString();
     console.error(
-      `[level:error,service:task-manager,timestamp:${timestamp}]:${message}`
+      `[level:${LoggerLevel.ERROR},service:task-manager,timestamp:${timestamp}]:${message}`
     );
     if (metadata) console.error(JSON.stringify(metadata, null, 2));
   }
@@ -41,7 +42,7 @@ class FallbackLogger {
   debug(message: string, metadata?: any): void {
     const timestamp = new Date().toISOString();
     console.debug(
-      `[level:debug,service:task-manager,timestamp:${timestamp}]:${message}`
+      `[level:${LoggerLevel.DEBUG},service:task-manager,timestamp:${timestamp}]:${message}`
     );
     if (metadata) console.debug(JSON.stringify(metadata, null, 2));
   }
@@ -49,7 +50,7 @@ class FallbackLogger {
   success(message: string, metadata?: any): void {
     const timestamp = new Date().toISOString();
     console.log(
-      `[level:info,service:task-manager,timestamp:${timestamp}]:${message}`
+      `[level:${LoggerLevel.SUCCESS},service:task-manager,timestamp:${timestamp}]:${message}`
     );
     if (metadata) console.log(JSON.stringify(metadata, null, 2));
   }
@@ -138,3 +139,6 @@ export const logger = {
   child: (additionalContext: Record<string, any>) =>
     currentLogger.child(additionalContext),
 };
+
+// Export logger level enum for use in other modules
+export { LoggerLevel };
