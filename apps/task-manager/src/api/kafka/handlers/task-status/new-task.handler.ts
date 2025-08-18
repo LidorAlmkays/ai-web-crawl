@@ -1,10 +1,10 @@
 import { EachMessagePayload } from 'kafkajs';
 import { BaseHandler } from '../base-handler';
 import { NewTaskStatusMessageDto } from '../../dtos/new-task-status-message.dto';
-import { TaskStatusHeaderDto } from '../../dtos/task-status-header.dto';
+import { NewTaskHeaderDto } from '../../dtos/new-task-header.dto';
 import { IWebCrawlTaskManagerPort } from '../../../../application/ports/web-crawl-task-manager.port';
-import { logger } from '../../../../common/utils/logger';
 import { TraceAttributes } from '../../../../common/utils/tracing/trace-attributes';
+import { logger } from '../../../../common/utils/logger';
 
 /**
  * Handler for new task messages
@@ -27,19 +27,16 @@ export class NewTaskHandler extends BaseHandler {
       try {
         // Extract and validate message headers using stacked error handling
         const headers = this.extractHeaders(message.message.headers);
-        const validatedHeaders = await this.validateDtoWithStackedError(
-          TaskStatusHeaderDto,
+        await this.validateDtoWithStackedError(
+          NewTaskHeaderDto,
           headers,
           message,
           handlerName,
           correlationId
         );
 
-        const taskId = validatedHeaders.id;
-
         // Add trace event for header validation
         this.addTraceEvent('headers_validated', {
-          taskId,
           correlationId,
           'validation.duration': Date.now(),
         });
@@ -60,15 +57,15 @@ export class NewTaskHandler extends BaseHandler {
 
         // Add trace event for body validation
         this.addTraceEvent('body_validated', {
-          taskId,
           correlationId,
           'validation.duration': Date.now(),
         });
 
         // Set task creation attributes
+        // Trace attributes without assuming client id
         this.setTraceAttributes(
           TraceAttributes.createTaskAttributes(
-            taskId,
+            '',
             'new',
             undefined,
             validatedData.base_url,
@@ -80,9 +77,8 @@ export class NewTaskHandler extends BaseHandler {
           )
         );
 
-        // Create the task using the ID from the message header
+        // Create the task without providing an ID (DB generates UUID)
         const createdTask = await this.webCrawlTaskManager.createWebCrawlTask(
-          taskId,
           validatedData.user_email,
           validatedData.user_query,
           validatedData.base_url
@@ -102,8 +98,8 @@ export class NewTaskHandler extends BaseHandler {
           createdTask
         );
 
-        // Log important event (task creation success) at INFO level
-        logger.info(`Web-crawl task created: ${createdTask.id}`, {
+        // Log the task creation success with the exact message format
+        logger.info(`Task ${createdTask.id} has been created`, {
           taskId: createdTask.id,
           correlationId,
           userEmail: createdTask.userEmail,
@@ -120,7 +116,6 @@ export class NewTaskHandler extends BaseHandler {
             'TASK_CREATION_ERROR',
             {
               correlationId,
-              taskId: this.extractHeaders(message.message.headers).id,
             }
           )
         );

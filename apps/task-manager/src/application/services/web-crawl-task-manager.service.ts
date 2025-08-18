@@ -59,7 +59,6 @@ export class WebCrawlTaskManagerService implements IWebCrawlTaskManagerPort {
    * ```
    */
   async createWebCrawlTask(
-    taskId: string,
     userEmail: string,
     userQuery: string,
     originalUrl: string
@@ -68,29 +67,16 @@ export class WebCrawlTaskManagerService implements IWebCrawlTaskManagerPort {
       'create_web_crawl_task',
       async () => {
         logger.debug('Creating new web crawl task', {
-          taskId,
           userEmail,
           userQuery,
           originalUrl,
         });
 
         // Set trace attributes for task creation
-        this.traceManager.setAttributes(
-          TraceAttributes.createTaskAttributes(
-            taskId,
-            'new',
-            undefined,
-            originalUrl,
-            {
-              'user.email': userEmail,
-              'user.query': userQuery,
-              'business.operation': 'task_creation',
-            }
-          )
-        );
+        // No client-provided ID; rely on DB to generate
 
         const task = WebCrawlTask.create(
-          taskId,
+          '',
           userEmail,
           userQuery,
           originalUrl,
@@ -99,12 +85,12 @@ export class WebCrawlTaskManagerService implements IWebCrawlTaskManagerPort {
 
         // Add trace event for domain entity creation
         this.traceManager.addEvent('domain_entity_created', {
-          taskId,
           status: task.status,
         });
 
-        const createdTask =
-          await this.webCrawlTaskRepository.createWebCrawlTask(task);
+        const createdTask = await this.webCrawlTaskRepository.createWebCrawlTask(
+          task
+        );
 
         // Add trace event for database persistence
         this.traceManager.addEvent('task_persisted', {
@@ -112,10 +98,10 @@ export class WebCrawlTaskManagerService implements IWebCrawlTaskManagerPort {
           status: createdTask.status,
         });
 
-        logger.info('Web crawl task created successfully', {
-          taskId: createdTask.id,
-          userEmail: createdTask.userEmail,
-          status: createdTask.status,
+        // Set trace attributes with the generated task ID
+        this.traceManager.setAttributes({
+          'task.id': createdTask.id,
+          'task.status': createdTask.status,
         });
 
         return createdTask;
@@ -123,7 +109,6 @@ export class WebCrawlTaskManagerService implements IWebCrawlTaskManagerPort {
       {
         [TraceAttributes.BUSINESS_OPERATION]: 'create_web_crawl_task',
         [TraceAttributes.BUSINESS_ENTITY]: 'web_crawl_task',
-        'task.id': taskId,
         'user.email': userEmail,
       }
     );

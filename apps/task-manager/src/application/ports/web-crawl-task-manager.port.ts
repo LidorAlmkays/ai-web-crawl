@@ -21,7 +21,6 @@ export interface IWebCrawlTaskManagerPort {
    * @throws Error if task creation fails
    */
   createWebCrawlTask(
-    taskId: string,
     userEmail: string,
     userQuery: string,
     originalUrl: string

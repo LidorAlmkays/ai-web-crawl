@@ -4,7 +4,6 @@
 -- Create web crawl task procedure
 -- Inserts a new web crawl task into the database
 CREATE OR REPLACE FUNCTION create_web_crawl_task(
-  p_id UUID,
   p_user_email VARCHAR(255),
   p_user_query TEXT,
   p_original_url VARCHAR(2048),
@@ -12,7 +11,9 @@ CREATE OR REPLACE FUNCTION create_web_crawl_task(
   p_status task_status,
   p_created_at TIMESTAMP WITH TIME ZONE,
   p_updated_at TIMESTAMP WITH TIME ZONE
-) RETURNS VOID AS $$
+) RETURNS UUID AS $$
+DECLARE
+  v_id UUID := gen_random_uuid();
 BEGIN
   INSERT INTO web_crawl_tasks (
     id,
@@ -24,7 +25,7 @@ BEGIN
     created_at,
     updated_at
   ) VALUES (
-    p_id,
+    v_id,
     p_user_email,
     p_user_query,
     p_original_url,
@@ -33,6 +34,8 @@ BEGIN
     p_created_at,
     p_updated_at
   );
+
+  RETURN v_id;
 END;
 $$ LANGUAGE plpgsql;
 

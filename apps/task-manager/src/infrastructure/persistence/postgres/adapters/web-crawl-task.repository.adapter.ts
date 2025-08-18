@@ -55,9 +55,8 @@ export class WebCrawlTaskRepositoryAdapter
       async () => {
         const operation = 'createWebCrawlTask';
         const sql =
-          'SELECT create_web_crawl_task($1, $2, $3, $4, $5, $6, $7, $8)';
+          'SELECT create_web_crawl_task($1, $2, $3, $4, $5, $6, $7)';
         const params = [
-          task.id,
           task.userEmail,
           task.userQuery,
           task.originalUrl,
@@ -96,7 +95,7 @@ export class WebCrawlTaskRepositoryAdapter
             'query.type': 'stored_procedure',
           });
 
-          await this.pool.query(sql, params);
+          const res = await this.pool.query(sql, params);
 
           // Add trace event for successful query
           this.traceManager.addEvent('database_query_successful', {
@@ -105,12 +104,25 @@ export class WebCrawlTaskRepositoryAdapter
             'query.duration': Date.now(),
           });
 
+          const returnedId = (res.rows?.[0] as any)?.create_web_crawl_task;
           logger.debug('Web crawl task created successfully', {
-            taskId: task.id,
+            taskId: returnedId,
             operation,
             status: task.status,
           });
-          return task;
+          return new WebCrawlTask(
+            returnedId,
+            task.userEmail,
+            task.userQuery,
+            task.originalUrl,
+            task.receivedAt,
+            task.status,
+            task.createdAt,
+            task.updatedAt,
+            task.result,
+            task.startedAt,
+            task.finishedAt
+          );
         } catch (error) {
           // Add error attributes to trace
           this.traceManager.setAttributes(

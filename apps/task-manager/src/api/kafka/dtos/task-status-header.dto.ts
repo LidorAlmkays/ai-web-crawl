@@ -1,27 +1,14 @@
-import { IsNotEmpty, IsUUID, IsEnum, IsDateString } from 'class-validator';
-import { TaskType } from '../../../common/enums/task-type.enum';
-import { TaskStatus } from '../../../common/enums/task-status.enum';
+import { IsNotEmpty, IsUUID } from 'class-validator';
+import { BaseTaskHeaderDto } from './base-task-header.dto';
 
 /**
  * DTO for validating task status message headers
- * Contains common metadata for all task status messages
+ * Extends BaseTaskHeaderDto with task ID for status updates
  */
-export class TaskStatusHeaderDto {
+export class TaskStatusHeaderDto extends BaseTaskHeaderDto {
   @IsUUID()
   @IsNotEmpty()
   id!: string;
-
-  @IsEnum(TaskType)
-  @IsNotEmpty()
-  task_type!: string;
-
-  @IsEnum(TaskStatus)
-  @IsNotEmpty()
-  status!: string;
-
-  @IsDateString()
-  @IsNotEmpty()
-  timestamp!: string;
 }
 
 // Export type alias for the class

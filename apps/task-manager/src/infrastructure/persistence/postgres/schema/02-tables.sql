@@ -4,7 +4,7 @@
 -- Web Crawl Tasks Table
 -- Stores all web crawling task information including status, results, and metadata
 CREATE TABLE web_crawl_tasks (
-  id UUID PRIMARY KEY,
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_email VARCHAR(255) NOT NULL,
   user_query TEXT NOT NULL,
   original_url VARCHAR(2048) NOT NULL,
