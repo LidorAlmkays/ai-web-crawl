@@ -73,7 +73,7 @@ export class KafkaFactory {
         brokers: this.config.brokers,
       });
 
-      this.kafkaClient = new KafkaClient();
+      this.kafkaClient = KafkaClient.getInstance();
       await this.kafkaClient.connect();
 
       this.isInitialized = true;

@@ -1,9 +1,17 @@
+import { ILogger } from '../../common/utils/logging/interfaces';
+import { logger } from '../../common/utils/logger';
 import { IWebCrawlTaskManagerPort } from '../ports/web-crawl-task-manager.port';
 import { WebCrawlTaskManagerService } from './web-crawl-task-manager.service';
 import { IWebCrawlTaskRepositoryPort } from '../../infrastructure/ports/web-crawl-task-repository.port';
 import { IWebCrawlMetricsDataPort } from '../../infrastructure/ports/web-crawl-metrics-data.port';
 import { WebCrawlMetricsService } from '../metrics/services/WebCrawlMetricsService';
-import { logger } from '../../common/utils/logger';
+import { WebCrawlTaskRepositoryAdapter } from '../../infrastructure/persistence/postgres/adapters/web-crawl-task.repository.adapter';
+import { WebCrawlMetricsAdapter } from '../../infrastructure/persistence/postgres/adapters/WebCrawlMetricsAdapter';
+import { PostgresFactory } from '../../infrastructure/persistence/postgres/postgres.factory';
+import { WebCrawlRequestPublisher } from '../../infrastructure/messaging/kafka/publishers/web-crawl-request.publisher';
+import { NewTaskHandler } from '../../api/kafka/handlers/task-status/new-task.handler';
+import { TaskStatusRouterHandler } from '../../api/kafka/handlers/task-status/task-status-router.handler';
+import { postgresConfig } from '../../config';
 
 /**
  * Application Factory
@@ -19,6 +27,103 @@ import { logger } from '../../common/utils/logger';
  * and return them as ports (interfaces) to maintain loose coupling.
  */
 export class ApplicationFactory {
+  private readonly logger: ILogger;
+  private readonly postgresFactory: PostgresFactory;
+
+  constructor() {
+    this.logger = logger;
+    this.postgresFactory = new PostgresFactory(postgresConfig);
+  }
+
+  /**
+   * Create web crawl task manager service with all dependencies
+   */
+  createWebCrawlTaskManagerService(): IWebCrawlTaskManagerPort {
+    this.logger.info('Creating web crawl task manager service');
+
+    const taskRepository = this.createTaskRepository();
+    const service = new WebCrawlTaskManagerService(taskRepository);
+
+    this.logger.info('Web crawl task manager service created successfully');
+    return service;
+  }
+
+  /**
+   * Create web crawl metrics service with all dependencies
+   */
+  createWebCrawlMetricsService(): WebCrawlMetricsService {
+    this.logger.info('Creating web crawl metrics service');
+
+    const metricsDataPort = this.createMetricsDataPort();
+    const service = new WebCrawlMetricsService(metricsDataPort);
+
+    this.logger.info('Web crawl metrics service created successfully');
+    return service;
+  }
+
+  /**
+   * Create new task handler with all dependencies
+   */
+  createNewTaskHandler(): NewTaskHandler {
+    this.logger.info('Creating new task handler');
+
+    const taskManagerService = this.createWebCrawlTaskManagerService();
+    const webCrawlPublisher = this.createWebCrawlRequestPublisher();
+    const handler = new NewTaskHandler(taskManagerService, webCrawlPublisher);
+
+    this.logger.info('New task handler created successfully');
+    return handler;
+  }
+
+  /**
+   * Create task status router handler with all dependencies
+   */
+  createTaskStatusRouterHandler(): TaskStatusRouterHandler {
+    this.logger.info('Creating task status router handler');
+
+    const taskManagerService = this.createWebCrawlTaskManagerService();
+    const router = new TaskStatusRouterHandler(taskManagerService);
+
+    this.logger.info('Task status router handler created successfully');
+    return router;
+  }
+
+  /**
+   * Create task repository adapter
+   */
+  private createTaskRepository(): IWebCrawlTaskRepositoryPort {
+    this.logger.info('Creating task repository adapter');
+
+    const adapter = new WebCrawlTaskRepositoryAdapter(this.postgresFactory.getPool());
+
+    this.logger.info('Task repository adapter created successfully');
+    return adapter;
+  }
+
+  /**
+   * Create metrics data port
+   */
+  private createMetricsDataPort(): IWebCrawlMetricsDataPort {
+    this.logger.info('Creating metrics data port');
+
+    const adapter = new WebCrawlMetricsAdapter(this.postgresFactory.getPool());
+
+    this.logger.info('Metrics data port created successfully');
+    return adapter;
+  }
+
+  /**
+   * Create web crawl request publisher
+   */
+  private createWebCrawlRequestPublisher(): WebCrawlRequestPublisher {
+    this.logger.info('Creating web crawl request publisher');
+
+    const publisher = new WebCrawlRequestPublisher();
+
+    this.logger.info('Web crawl request publisher created successfully');
+    return publisher;
+  }
+
   /**
    * Creates a web crawl task manager service with proper dependency injection
    *

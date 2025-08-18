@@ -2,7 +2,7 @@
 
 ## Status
 
-**NOT_COMPLETED**
+**COMPLETED**
 
 ## Issues to Address
 

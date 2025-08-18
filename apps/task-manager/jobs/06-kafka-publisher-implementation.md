@@ -2,7 +2,7 @@
 
 ## Status
 
-**NOT_COMPLETED**
+**COMPLETED**
 
 ## Overview
 
@@ -19,19 +19,19 @@ Create a Kafka publisher for web crawl requests that uses the singleton Kafka cl
 
 ### New Files
 
-- `src/api/kafka/publishers/web-crawl-request.publisher.ts` - Web crawl request publisher
-- `src/api/kafka/publishers/__tests__/web-crawl-request.publisher.spec.ts` - Unit tests
+- `src/infrastructure/messaging/kafka/publishers/web-crawl-request.publisher.ts` - Web crawl request publisher
+- `src/infrastructure/messaging/kafka/publishers/__tests__/web-crawl-request.publisher.spec.ts` - Unit tests
 
 ### Files to Modify
 
-- `src/api/kafka/publishers/index.ts` - Export new publisher
+- `src/infrastructure/messaging/kafka/publishers/index.ts` - Export new publisher
 - `src/common/clients/kafka-client.ts` - Ensure singleton pattern
 
 ## Detailed Implementation
 
 ### 1. Create Web Crawl Request Publisher
 
-**File**: `src/api/kafka/publishers/web-crawl-request.publisher.ts`
+**File**: `src/infrastructure/messaging/kafka/publishers/web-crawl-request.publisher.ts`
 
 ```typescript
 import { KafkaClient } from '../../common/clients/kafka-client';
@@ -308,7 +308,7 @@ export function createWebCrawlRequestPublisher(logger: ILogger): WebCrawlRequest
 
 ### 2. Update Publishers Index
 
-**File**: `src/api/kafka/publishers/index.ts`
+**File**: `src/infrastructure/messaging/kafka/publishers/index.ts`
 
 ```typescript
 // ... existing exports ...
@@ -319,7 +319,7 @@ export { WebCrawlRequestPublisher, createWebCrawlRequestPublisher, type PublishR
 
 ### 3. Create Unit Tests
 
-**File**: `src/api/kafka/publishers/__tests__/web-crawl-request.publisher.spec.ts`
+**File**: `src/infrastructure/messaging/kafka/publishers/__tests__/web-crawl-request.publisher.spec.ts`
 
 ```typescript
 import { WebCrawlRequestPublisher, PublishOptions } from '../web-crawl-request.publisher';

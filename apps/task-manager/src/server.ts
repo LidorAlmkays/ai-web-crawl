@@ -7,6 +7,9 @@
  * It handles signal processing and graceful shutdown.
  */
 
+// CRITICAL: Import reflect-metadata first for decorators to work
+import 'reflect-metadata';
+
 // CRITICAL: Initialize OpenTelemetry synchronously before any other imports
 // This ensures instrumentation works properly for express, kafkajs, and pg
 const { initOpenTelemetry } = require('./common/utils/otel-init');

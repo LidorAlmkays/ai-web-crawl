@@ -1,22 +1,28 @@
 import { EachMessagePayload } from 'kafkajs';
 import { BaseHandler } from '../base-handler';
-import { NewTaskStatusMessageDto } from '../../dtos/new-task-status-message.dto';
-import { NewTaskHeaderDto } from '../../dtos/new-task-header.dto';
+import { WebCrawlNewTaskHeaderDto, WebCrawlNewTaskMessageDto } from '../../dtos/index';
 import { IWebCrawlTaskManagerPort } from '../../../../application/ports/web-crawl-task-manager.port';
+import { WebCrawlRequestPublisher } from '../../../../infrastructure/messaging/kafka/publishers/web-crawl-request.publisher';
 import { TraceAttributes } from '../../../../common/utils/tracing/trace-attributes';
 import { logger } from '../../../../common/utils/logger';
 
 /**
  * Handler for new task messages
- * Processes task creation requests
+ * Processes task creation requests with enhanced trace context and web crawl request publishing
  */
 export class NewTaskHandler extends BaseHandler {
-  constructor(private readonly webCrawlTaskManager: IWebCrawlTaskManagerPort) {
+  private readonly webCrawlPublisher: WebCrawlRequestPublisher;
+
+  constructor(
+    private readonly webCrawlTaskManager: IWebCrawlTaskManagerPort,
+    webCrawlPublisher?: WebCrawlRequestPublisher
+  ) {
     super();
+    this.webCrawlPublisher = webCrawlPublisher || new WebCrawlRequestPublisher();
   }
 
   /**
-   * Process new task message
+   * Process new task message with enhanced trace context and web crawl request publishing
    */
   async process(message: EachMessagePayload): Promise<void> {
     const handlerName = 'NewTaskHandler';
@@ -25,10 +31,10 @@ export class NewTaskHandler extends BaseHandler {
     // Use tracing wrapper for the entire message processing
     await this.traceKafkaMessage(message, 'new_task_processing', async () => {
       try {
-        // Extract and validate message headers using stacked error handling
+        // Extract and validate message headers using new DTO structure
         const headers = this.extractHeaders(message.message.headers);
         await this.validateDtoWithStackedError(
-          NewTaskHeaderDto,
+          WebCrawlNewTaskHeaderDto,
           headers,
           message,
           handlerName,
@@ -46,9 +52,9 @@ export class NewTaskHandler extends BaseHandler {
           message.message.value?.toString() || '{}'
         );
 
-        // Validate message body using stacked error handling
+        // Validate message body using new DTO structure
         const validatedData = await this.validateDtoWithStackedError(
-          NewTaskStatusMessageDto,
+          WebCrawlNewTaskMessageDto,
           messageBody,
           message,
           handlerName,
@@ -61,8 +67,21 @@ export class NewTaskHandler extends BaseHandler {
           'validation.duration': Date.now(),
         });
 
+        // Extract trace context from message
+        const traceContext = this.extractTraceContext(message);
+        const traceId = traceContext?.traceId || correlationId;
+
+        // Log processing start with trace context
+        logger.info('Processing new task creation', {
+          traceId,
+          userEmail: validatedData.user_email,
+          userQuery: validatedData.user_query,
+          baseUrl: validatedData.base_url,
+          status: headers.status,
+          messageTimestamp: headers.timestamp,
+        });
+
         // Set task creation attributes
-        // Trace attributes without assuming client id
         this.setTraceAttributes(
           TraceAttributes.createTaskAttributes(
             '',
@@ -73,6 +92,7 @@ export class NewTaskHandler extends BaseHandler {
               'user.email': validatedData.user_email,
               'user.query': validatedData.user_query,
               correlationId,
+              traceId,
             }
           )
         );
@@ -89,7 +109,20 @@ export class NewTaskHandler extends BaseHandler {
           taskId: createdTask.id,
           status: createdTask.status,
           correlationId,
+          traceId,
         });
+
+        // Log the task creation success with the exact message format
+        logger.info(`Task ${createdTask.id} has been created`, {
+          taskId: createdTask.id,
+          traceId,
+          userEmail: createdTask.userEmail,
+          status: createdTask.status,
+          processingStage: 'TASK_CREATION_SUCCESS',
+        });
+
+        // Publish web crawl request with trace context
+        await this.publishWebCrawlRequest(createdTask, traceContext);
 
         this.logProcessingSuccess(
           message,
@@ -97,15 +130,6 @@ export class NewTaskHandler extends BaseHandler {
           correlationId,
           createdTask
         );
-
-        // Log the task creation success with the exact message format
-        logger.info(`Task ${createdTask.id} has been created`, {
-          taskId: createdTask.id,
-          correlationId,
-          userEmail: createdTask.userEmail,
-          status: createdTask.status,
-          processingStage: 'TASK_CREATION_SUCCESS',
-        });
 
         return createdTask;
       } catch (error) {
@@ -131,5 +155,42 @@ export class NewTaskHandler extends BaseHandler {
         throw error;
       }
     });
+  }
+
+
+
+  /**
+   * Publish web crawl request with trace context
+   */
+  private async publishWebCrawlRequest(task: any, traceContext: any): Promise<void> {
+    try {
+      const publishResult = await this.webCrawlPublisher.publishFromTaskData(
+        task.id,
+        task.userEmail,
+        task.userQuery,
+        task.originalUrl,
+        {
+          traceContext,
+        }
+      );
+
+      if (!publishResult.success) {
+        throw new Error(`Failed to publish web crawl request: ${publishResult.error}`);
+      }
+
+      logger.info('Web crawl request published successfully', {
+        taskId: task.id,
+        messageId: publishResult.messageId,
+        topic: publishResult.topic,
+        traceId: traceContext?.traceId,
+      });
+    } catch (error) {
+      logger.error('Failed to publish web crawl request', {
+        taskId: task.id,
+        error: error instanceof Error ? error.message : String(error),
+        traceId: traceContext?.traceId,
+      });
+      throw error;
+    }
   }
 }
