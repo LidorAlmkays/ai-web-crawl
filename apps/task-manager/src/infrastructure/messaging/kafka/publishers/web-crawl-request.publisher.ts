@@ -82,6 +82,7 @@ export class WebCrawlRequestPublisher {
         duration,
         userEmail: message.body.user_email,
         baseUrl: message.body.base_url,
+        correlationId: traceContext?.correlationId,
       });
 
       return {
@@ -102,6 +103,7 @@ export class WebCrawlRequestPublisher {
         duration,
         userEmail: message.body.user_email,
         baseUrl: message.body.base_url,
+        correlationId: traceContext?.correlationId,
         stack: error instanceof Error ? error.stack : undefined,
       });
 
@@ -162,15 +164,7 @@ export class WebCrawlRequestPublisher {
     // Add task_id header
     headers['task_id'] = Buffer.from(message.headers.task_id);
 
-    // Add trace context headers if available
-    if (traceContext?.traceparent) {
-      headers['traceparent'] = Buffer.from(traceContext.traceparent);
-    }
-
-    if (traceContext?.tracestate) {
-      headers['tracestate'] = Buffer.from(traceContext.tracestate);
-    }
-
+    // Add correlation id if available
     if (traceContext?.correlationId) {
       headers['correlation_id'] = Buffer.from(traceContext.correlationId);
     }

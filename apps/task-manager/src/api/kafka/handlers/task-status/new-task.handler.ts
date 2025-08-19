@@ -1,9 +1,10 @@
 import { EachMessagePayload } from 'kafkajs';
 import { BaseHandler } from '../base-handler';
-import { WebCrawlNewTaskHeaderDto, WebCrawlNewTaskMessageDto } from '../../dtos/index';
+import { WebCrawlNewTaskHeaderDto, WebCrawlNewTaskMessageDto } from '../../dtos';
 import { IWebCrawlTaskManagerPort } from '../../../../application/ports/web-crawl-task-manager.port';
 import { WebCrawlRequestPublisher } from '../../../../infrastructure/messaging/kafka/publishers/web-crawl-request.publisher';
 import { TraceAttributes } from '../../../../common/utils/tracing/trace-attributes';
+// TraceContextManager intentionally not used; we prefer correlationId over synthetic trace IDs
 import { logger } from '../../../../common/utils/logger';
 
 /**
@@ -67,13 +68,12 @@ export class NewTaskHandler extends BaseHandler {
           'validation.duration': Date.now(),
         });
 
-        // Extract trace context from message
-        const traceContext = this.extractTraceContext(message);
-        const traceId = traceContext?.traceId || correlationId;
+        // Use correlationId as primary context identifier unless OTEL provides traceparent end-to-end
+        // Intentionally ignoring W3C traceparent to avoid mixing identifiers
 
         // Log processing start with trace context
         logger.info('Processing new task creation', {
-          traceId,
+          correlationId,
           userEmail: validatedData.user_email,
           userQuery: validatedData.user_query,
           baseUrl: validatedData.base_url,
@@ -92,7 +92,6 @@ export class NewTaskHandler extends BaseHandler {
               'user.email': validatedData.user_email,
               'user.query': validatedData.user_query,
               correlationId,
-              traceId,
             }
           )
         );
@@ -109,20 +108,21 @@ export class NewTaskHandler extends BaseHandler {
           taskId: createdTask.id,
           status: createdTask.status,
           correlationId,
-          traceId,
         });
 
         // Log the task creation success with the exact message format
         logger.info(`Task ${createdTask.id} has been created`, {
           taskId: createdTask.id,
-          traceId,
           userEmail: createdTask.userEmail,
           status: createdTask.status,
           processingStage: 'TASK_CREATION_SUCCESS',
         });
 
-        // Publish web crawl request with trace context
-        await this.publishWebCrawlRequest(createdTask, traceContext);
+        // Only propagate correlationId (no synthetic traceparent)
+        const traceOptions = { correlationId };
+
+        // Publish web crawl request with trace and correlation context
+        await this.publishWebCrawlRequest(createdTask, traceOptions);
 
         this.logProcessingSuccess(
           message,
@@ -162,7 +162,10 @@ export class NewTaskHandler extends BaseHandler {
   /**
    * Publish web crawl request with trace context
    */
-  private async publishWebCrawlRequest(task: any, traceContext: any): Promise<void> {
+  private async publishWebCrawlRequest(
+    task: { id: string; userEmail: string; userQuery: string; originalUrl: string },
+    traceOptions?: { traceparent?: string; tracestate?: string; correlationId?: string }
+  ): Promise<void> {
     try {
       const publishResult = await this.webCrawlPublisher.publishFromTaskData(
         task.id,
@@ -170,7 +173,7 @@ export class NewTaskHandler extends BaseHandler {
         task.userQuery,
         task.originalUrl,
         {
-          traceContext,
+          traceContext: traceOptions,
         }
       );
 
@@ -182,13 +185,13 @@ export class NewTaskHandler extends BaseHandler {
         taskId: task.id,
         messageId: publishResult.messageId,
         topic: publishResult.topic,
-        traceId: traceContext?.traceId,
+        traceId: undefined,
       });
     } catch (error) {
       logger.error('Failed to publish web crawl request', {
         taskId: task.id,
         error: error instanceof Error ? error.message : String(error),
-        traceId: traceContext?.traceId,
+        traceId: undefined,
       });
       throw error;
     }

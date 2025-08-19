@@ -149,8 +149,12 @@ export abstract class BaseHandler implements IHandler {
     handlerName: string,
     correlationId?: string
   ): string {
-    const id = correlationId || this.generateCorrelationId();
     const headers = this.extractHeaders(message.message.headers);
+    const headerCorrelation =
+      (headers.correlation_id as string) ||
+      (headers['correlation-id'] as string) ||
+      undefined;
+    const id = correlationId || headerCorrelation || this.generateCorrelationId();
     const taskId = headers.task_id;
     const eventType = this.extractEventType(message);
 

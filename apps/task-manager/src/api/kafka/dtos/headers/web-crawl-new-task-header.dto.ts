@@ -6,3 +6,5 @@ import { BaseWebCrawlHeaderDto } from './base-web-crawl-header.dto';
 export class WebCrawlNewTaskHeaderDto extends BaseWebCrawlHeaderDto {}
 
 export type WebCrawlNewTaskHeaderDtoType = WebCrawlNewTaskHeaderDto;
+
+

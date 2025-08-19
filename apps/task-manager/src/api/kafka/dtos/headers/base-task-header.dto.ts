@@ -1,6 +1,6 @@
 import { IsNotEmpty, IsEnum, IsDateString } from 'class-validator';
-import { TaskType } from '../../../common/enums/task-type.enum';
-import { TaskStatus } from '../../../common/enums/task-status.enum';
+import { TaskType } from '../../../../common/enums/task-type.enum';
+import { TaskStatus } from '../../../../common/enums/task-status.enum';
 
 /**
  * Base DTO for all task-related message headers
@@ -21,3 +21,5 @@ export class BaseTaskHeaderDto {
 }
 
 export type BaseTaskHeaderDtoType = BaseTaskHeaderDto;
+
+

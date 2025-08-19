@@ -1,7 +1,7 @@
 import { EachMessagePayload } from 'kafkajs';
 import { BaseHandler } from '../base-handler';
 import { validateDto } from '../../../../common/utils/validation';
-import { CompletedTaskStatusMessageDto } from '../../dtos/completed-task-status-message.dto';
+import { WebCrawlCompletedTaskMessageDto } from '../../dtos';
 import { IWebCrawlTaskManagerPort } from '../../../../application/ports/web-crawl-task-manager.port';
 import { logger } from '../../../../common/utils/logger';
 import { TaskStatus } from '../../../../common/enums/task-status.enum';
@@ -50,7 +50,7 @@ export class CompleteTaskHandler extends BaseHandler {
 
           // Validate message body
           const validationResult = await validateDto(
-            CompletedTaskStatusMessageDto,
+            WebCrawlCompletedTaskMessageDto,
             messageBody
           );
           if (!validationResult.isValid) {
@@ -66,7 +66,7 @@ export class CompleteTaskHandler extends BaseHandler {
           }
 
           const validatedData =
-            validationResult.validatedData as CompletedTaskStatusMessageDto;
+            validationResult.validatedData as WebCrawlCompletedTaskMessageDto;
 
           // Add trace event for validation
           this.addTraceEvent('body_validated', {
