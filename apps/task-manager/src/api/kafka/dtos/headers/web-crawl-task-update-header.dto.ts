@@ -1,10 +1,10 @@
 import { IsNotEmpty, IsUUID } from 'class-validator';
-import { BaseWebCrawlHeaderDto } from './base-web-crawl-header.dto';
+import { BaseTaskHeaderDto } from './base-task-header.dto';
 
 /**
  * Header for task update messages (completed/error) — includes task_id
  */
-export class WebCrawlTaskUpdateHeaderDto extends BaseWebCrawlHeaderDto {
+export class WebCrawlTaskUpdateHeaderDto extends BaseTaskHeaderDto {
   @IsUUID()
   @IsNotEmpty()
   task_id!: string;

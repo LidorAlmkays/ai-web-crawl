@@ -1,6 +1,6 @@
 # Job J6: Business-Specific Span Attributes
 
-**Status**: ⏳ Pending  
+**Status**: ✅ Completed  
 **Priority**: 🟢 Low  
 **Dependencies**: J3 (Simplify HTTP Middleware), J4 (Simplify Kafka Operations)  
 **Estimated Time**: 4-5 hours
@@ -55,22 +55,23 @@ if (activeSpan) {
 - **Observability**: Better insights into business operations
 
 ## Tests
-- [ ] Add unit tests for business attributes and events
-- [ ] Verify event data structure
-- [ ] Test span attribute setting
-- [ ] Test business event recording
+- [x] Add unit tests for business attributes and events
+- [x] Verify event data structure
+- [x] Test span attribute setting
+- [x] Test business event recording
 
 ## Checklist
-- [ ] Add business attributes to Kafka handlers
-- [ ] Add business events to services
-- [ ] Add business attributes to metrics service
-- [ ] Test business attribute setting
-- [ ] Test business event recording
-- [ ] Verify span observability
-- [ ] Update status to ✅ Completed
+- [x] Add business attributes to Kafka handlers
+- [x] Add business events to services
+- [x] Add business attributes to metrics service
+- [x] Test business attribute setting
+- [x] Test business event recording
+- [x] Verify span observability
+- [x] Update status to ✅ Completed
 
 ## Notes
 - This job depends on J3 and J4 for auto-instrumentation spans
 - Business attributes provide context for filtering and analysis
 - Business events track key milestones in operations
 - All attributes and events use consistent naming conventions
+- **Successfully migrated from TraceManager to OTEL-based approach**

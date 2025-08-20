@@ -44,7 +44,7 @@ export class ApplicationFactory {
     const taskRepository = this.createTaskRepository();
     const service = new WebCrawlTaskManagerService(taskRepository);
 
-    this.logger.info('Web crawl task manager service created successfully');
+    this.logger.debug('Web crawl task manager service created successfully');
     return service;
   }
 
@@ -57,7 +57,7 @@ export class ApplicationFactory {
     const metricsDataPort = this.createMetricsDataPort();
     const service = new WebCrawlMetricsService(metricsDataPort);
 
-    this.logger.info('Web crawl metrics service created successfully');
+    this.logger.debug('Web crawl metrics service created successfully');
     return service;
   }
 
@@ -71,7 +71,7 @@ export class ApplicationFactory {
     const webCrawlPublisher = this.createWebCrawlRequestPublisher();
     const handler = new NewTaskHandler(taskManagerService, webCrawlPublisher);
 
-    this.logger.info('New task handler created successfully');
+    this.logger.debug('New task handler created successfully');
     return handler;
   }
 
@@ -84,7 +84,7 @@ export class ApplicationFactory {
     const taskManagerService = this.createWebCrawlTaskManagerService();
     const router = new TaskStatusRouterHandler(taskManagerService);
 
-    this.logger.info('Task status router handler created successfully');
+    this.logger.debug('Task status router handler created successfully');
     return router;
   }
 
@@ -94,9 +94,9 @@ export class ApplicationFactory {
   private createTaskRepository(): IWebCrawlTaskRepositoryPort {
     this.logger.info('Creating task repository adapter');
 
-    const adapter = new WebCrawlTaskRepositoryAdapter(this.postgresFactory.getPool());
+    const adapter = new WebCrawlTaskRepositoryAdapter(this.postgresFactory);
 
-    this.logger.info('Task repository adapter created successfully');
+    this.logger.debug('Task repository adapter created successfully');
     return adapter;
   }
 
@@ -108,7 +108,7 @@ export class ApplicationFactory {
 
     const adapter = new WebCrawlMetricsAdapter(this.postgresFactory.getPool());
 
-    this.logger.info('Metrics data port created successfully');
+    this.logger.debug('Metrics data port created successfully');
     return adapter;
   }
 
@@ -120,7 +120,7 @@ export class ApplicationFactory {
 
     const publisher = new WebCrawlRequestPublisher();
 
-    this.logger.info('Web crawl request publisher created successfully');
+    this.logger.debug('Web crawl request publisher created successfully');
     return publisher;
   }
 

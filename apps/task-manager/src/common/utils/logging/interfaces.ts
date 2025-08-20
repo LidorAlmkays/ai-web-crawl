@@ -89,6 +89,20 @@ export interface LoggerConfig {
 }
 
 /**
+ * Trace context structure for OTEL integration
+ */
+export interface TraceContext {
+  /** Trace ID for distributed tracing correlation */
+  traceId: string;
+  /** Span ID for current operation */
+  spanId: string;
+  /** Parent span ID if available */
+  parentSpanId?: string;
+  /** Trace state for vendor-specific information */
+  traceState?: string;
+}
+
+/**
  * Log record structure for internal processing
  * Used internally to represent a log entry before formatting
  */
@@ -108,9 +122,6 @@ export interface LogRecord {
   /** Optional metadata */
   metadata?: Record<string, any>;
 
-  /** Trace ID if available (for correlation) */
-  traceId?: string;
-
-  /** Span ID if available (for correlation) */
-  spanId?: string;
+  /** Trace context for OTEL integration */
+  trace: TraceContext;
 }

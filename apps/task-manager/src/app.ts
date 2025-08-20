@@ -78,7 +78,7 @@ export class TaskManagerApplication {
       await this.kafkaFactory.waitForInitialization();
 
       const webCrawlTaskRepository = new WebCrawlTaskRepositoryAdapter(
-        this.postgresFactory.getPool()
+        this.postgresFactory
       );
       const webCrawlTaskManager = ApplicationFactory.createWebCrawlTaskManager(
         webCrawlTaskRepository

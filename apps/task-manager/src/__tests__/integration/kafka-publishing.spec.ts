@@ -54,9 +54,6 @@ describe('Kafka Publishing Integration Tests', () => {
           timestamp: new Date().toISOString(),
           traceparent: '00-1234567890abcdef1234567890abcdef-1234567890abcdef-01',
           tracestate: 'test=value',
-          correlation_id: 'test-correlation-123',
-          source: 'kafka-test',
-          version: '1.0.0',
         },
         body: {
           user_email: 'kafka-publish-test@example.com',
@@ -66,13 +63,7 @@ describe('Kafka Publishing Integration Tests', () => {
       };
 
       // Publish message directly using the publisher
-      const publishResult = await webCrawlRequestPublisher.publish(testMessage, {
-        traceContext: {
-          traceparent: testMessage.headers.traceparent,
-          tracestate: testMessage.headers.tracestate,
-          correlationId: testMessage.headers.correlation_id,
-        },
-      });
+      const publishResult = await webCrawlRequestPublisher.publish(testMessage);
 
       // Verify the message was published successfully
       expect(publishResult.success).toBe(true);
@@ -88,8 +79,6 @@ describe('Kafka Publishing Integration Tests', () => {
         headers: {
           task_id: 'invalid-uuid',
           timestamp: 'invalid-timestamp',
-          source: 'kafka-test',
-          version: '1.0.0',
         },
         body: {
           user_email: 'invalid-email',
@@ -136,9 +125,6 @@ describe('Kafka Publishing Integration Tests', () => {
           timestamp: new Date().toISOString(),
           traceparent: '00-1234567890abcdef1234567890abcdef-1234567890abcdef-01',
           tracestate: 'test=value',
-          correlation_id: 'test-correlation-123',
-          source: 'kafka-test',
-          version: '1.0.0',
         },
         body: {
           user_email: 'publisher-test@example.com',
@@ -147,13 +133,7 @@ describe('Kafka Publishing Integration Tests', () => {
         },
       };
 
-      const publishResult = await webCrawlRequestPublisher.publish(validMessage, {
-        traceContext: {
-          traceparent: validMessage.headers.traceparent,
-          tracestate: validMessage.headers.tracestate,
-          correlationId: validMessage.headers.correlation_id,
-        },
-      });
+      const publishResult = await webCrawlRequestPublisher.publish(validMessage);
 
       expect(publishResult.success).toBe(true);
       expect(publishResult.topic).toBe(kafkaTopicConfig.webCrawlRequest);
@@ -167,8 +147,6 @@ describe('Kafka Publishing Integration Tests', () => {
         headers: {
           task_id: 'invalid-uuid',
           timestamp: 'invalid-timestamp',
-          source: 'kafka-test',
-          version: '1.0.0',
         },
         body: {
           user_email: 'invalid-email',

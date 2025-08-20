@@ -100,7 +100,7 @@ export class PostgresFactory {
       this.isInitialized = true;
 
       // Log important event (database connection) at INFO level
-      logger.info('PostgreSQL connected successfully');
+      logger.debug('PostgreSQL connected successfully');
     } catch (error) {
       logger.error('Failed to create PostgreSQL connection pool', {
         error: error instanceof Error ? error.message : String(error),
@@ -187,9 +187,9 @@ export class PostgresFactory {
    * ```
    */
   public createWebCrawlTaskRepository(): IWebCrawlTaskRepositoryPort {
-    const pool = this.getPool();
     logger.debug('Creating WebCrawlTaskRepositoryAdapter');
-    return new WebCrawlTaskRepositoryAdapter(pool);
+    // Adapter now expects the factory for connection management
+    return new WebCrawlTaskRepositoryAdapter(this);
   }
 
   /**

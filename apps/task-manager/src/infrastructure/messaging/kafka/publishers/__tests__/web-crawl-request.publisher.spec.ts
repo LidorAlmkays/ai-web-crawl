@@ -37,12 +37,11 @@ describe('WebCrawlRequestPublisher', () => {
       validMessage = new WebCrawlRequestMessageDto();
       validMessage.headers = {
         task_id: '123e4567-e89b-12d3-a456-426614174000',
-        timestamp: new Date().toISOString(),
-        traceparent: '00-1234567890abcdef1234567890abcdef-1234567890abcdef-01',
+        traceparent: '00-1234567890abcdef-1234567890abcdef-01',
         tracestate: 'test=value',
-        correlation_id: 'corr-123',
-        source: 'task-manager',
+        timestamp: '1755675492035',
         version: '1.0.0',
+        source: 'task-manager',
       };
       validMessage.body = {
         user_email: 'test@example.com',
@@ -80,7 +79,6 @@ describe('WebCrawlRequestPublisher', () => {
               task_id: expect.any(Buffer),
               traceparent: expect.any(Buffer),
               tracestate: expect.any(Buffer),
-              correlation_id: expect.any(Buffer),
             }),
           }),
         ]),
@@ -128,11 +126,6 @@ describe('WebCrawlRequestPublisher', () => {
         timeout: 60000,
         acks: 2,
         retries: 3,
-        traceContext: {
-          traceparent: '00-custom-trace-123-01',
-          tracestate: 'custom=value',
-          correlationId: 'custom-corr-123',
-        },
       };
 
       await publisher.publish(validMessage, options);
@@ -144,7 +137,6 @@ describe('WebCrawlRequestPublisher', () => {
             headers: expect.objectContaining({
               traceparent: expect.any(Buffer),
               tracestate: expect.any(Buffer),
-              correlation_id: expect.any(Buffer),
             }),
           }),
         ]),
@@ -387,7 +379,6 @@ describe('WebCrawlRequestPublisher', () => {
         timestamp: new Date().toISOString(),
         traceparent: '00-1234567890abcdef1234567890abcdef-1234567890abcdef-01',
         tracestate: 'test=value',
-        correlation_id: 'corr-123',
         source: 'task-manager',
         version: '1.0.0',
       };
@@ -409,7 +400,6 @@ describe('WebCrawlRequestPublisher', () => {
               headers: expect.objectContaining({
                 traceparent: expect.any(Buffer),
                 tracestate: expect.any(Buffer),
-                correlation_id: expect.any(Buffer),
               }),
             }),
           ]),

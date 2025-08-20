@@ -23,15 +23,22 @@ graph TD
 
 | Job | File | Status | Dependencies | Priority |
 |-----|------|--------|--------------|----------|
-| J1 | [01-enable-auto-instrumentation.md](./01-enable-auto-instrumentation.md) | ⏳ Pending | None | 🔴 Critical |
-| J2 | [02-logger-core-enrichment.md](./02-logger-core-enrichment.md) | ⏳ Pending | J1 | 🔴 Critical |
-| J3 | [03-simplify-http-middleware.md](./03-simplify-http-middleware.md) | ⏳ Pending | J1 | 🟡 Medium |
-| J4 | [04-simplify-kafka-operations.md](./04-simplify-kafka-operations.md) | ⏳ Pending | J1 | 🟡 Medium |
-| J5 | [05-dto-validation.md](./05-dto-validation.md) | ⏳ Pending | J2 | 🟡 Medium |
-| J6 | [06-business-attributes.md](./06-business-attributes.md) | ⏳ Pending | J3, J4 | 🟢 Low |
-| J7 | [07-console-debugging.md](./07-console-debugging.md) | ⏳ Pending | J5 | 🟢 Low |
+| J1 | [01-enable-auto-instrumentation.md](./01-enable-auto-instrumentation.md) | ✅ Completed | None | 🔴 Critical |
+| J2 | [02-logger-core-enrichment.md](./02-logger-core-enrichment.md) | ✅ Completed | J1 | 🔴 Critical |
+| J3 | [03-simplify-http-middleware.md](./03-simplify-http-middleware.md) | ✅ Completed | J1 | 🟡 Medium |
+| J4 | [04-simplify-kafka-operations.md](./04-simplify-kafka-operations.md) | ✅ Completed | J1 | 🟡 Medium |
+| J5 | [05-dto-validation.md](./05-dto-validation.md) | ✅ Completed | J2 | 🟡 Medium |
+| J6 | [06-business-attributes.md](./06-business-attributes.md) | ✅ Completed | J3, J4 | 🟢 Low |
+| J7 | [07-console-debugging.md](./07-console-debugging.md) | ✅ Completed | J5 | 🟢 Low |
 | J8 | [08-documentation.md](./08-documentation.md) | ⏳ Pending | J6, J7 | 🟢 Low |
-| J9 | [09-cleanup-obsolete-code.md](./09-cleanup-obsolete-code.md) | ⏳ Pending | J1-J8 | 🟢 Low |
+| J9 | [09-cleanup-obsolete-code.md](./09-cleanup-obsolete-code.md) | ✅ Completed | J1-J8 | 🟢 Low |
+| J10 | Update Kafka Test Script (publish-new-task) | Low | J5 | ✅ Completed | 0.5-1 hour |
+
+| J11 | Logging Policy Overhaul (Noise Reduction + Signal) | High | J1-J7, J9, J10 | ✅ Completed | 1-2 hours |
+| J12 | Error Handling Architecture (Infra→App→API) | High | J11 | ⏭️ Skipped | 1-2 hours |
+| J13 | Kafka CLI Trace Enrichment (Service-like Emitter) | High | J1, J10 | ✅ Completed | 0.5-1 hour |
+| J14 | Deduplicate Success Logging | Medium | J11 | ✅ Completed | 0.5-1 hour |
+| J15 | Base Trace DTO (W3C) + CorrelationId Cleanup | High | J5, J11 | ✅ Completed | 1 hour |
 
 ## Implementation Phases
 

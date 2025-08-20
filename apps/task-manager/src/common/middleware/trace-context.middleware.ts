@@ -1,19 +1,16 @@
 import { Request, Response, NextFunction } from 'express';
-import {
-  TraceContextManager,
-  TraceContext,
-} from '../utils/tracing/trace-context';
-import { TraceContextExtractor } from '../utils/tracing/trace-context-extractor';
+// OTEL express auto-instrumentation manages context; no explicit API needed here
 import { logger } from '../utils/logger';
 
 /**
- * Middleware to handle trace context for HTTP requests
+ * Simplified middleware to handle trace context for HTTP requests
  *
  * This middleware:
- * 1. Extracts existing trace context from request headers (if present)
- * 2. Generates new span ID for the current request
- * 3. Creates trace-aware logger for the request
- * 4. Attaches trace context to request object for downstream use
+ * 1. Extracts W3C trace context from request headers (if present)
+ * 2. Activates the trace context for downstream operations
+ * 3. Logs the request with automatic trace context from active span
+ * 
+ * Note: Express auto-instrumentation handles span creation automatically
  */
 export function traceContextMiddleware(
   req: Request,
@@ -21,50 +18,13 @@ export function traceContextMiddleware(
   next: NextFunction
 ): void {
   try {
-    // Extract existing trace context from headers
-    const existingContext =
-      TraceContextExtractor.extractTraceContextFromKafkaHeaders(req.headers);
-
-    let traceContext: TraceContext;
-
-    if (existingContext) {
-      // If trace context exists, generate new span ID for this request
-      traceContext = TraceContextManager.createTraceContext(
-        existingContext.traceId,
-        undefined, // Generate new span ID
-        existingContext.traceFlags
-      );
-    } else {
-      // If no trace context, create completely new trace context
-      traceContext = TraceContextManager.createTraceContext();
-    }
-
-    // Create trace-aware logger for this request
-    const traceLogger = TraceContextExtractor.createTraceLoggerFromHeaders(
-      {
-        traceparent: TraceContextManager.formatW3CTraceContext(
-          traceContext.traceId,
-          traceContext.spanId,
-          traceContext.traceFlags
-        ),
-      },
-      logger
-    );
-
-    // Attach trace context and logger to request object
-    (req as any).traceContext = traceContext;
-    (req as any).traceLogger = traceLogger;
-
-    // Log request with trace context
-    traceLogger.info('HTTP request received', {
+    // Log request (express auto-instrumentation will create/propagate span)
+    logger.debug('HTTP request received', {
       method: req.method,
       path: req.path,
       ip: req.ip,
       userAgent: req.get('User-Agent'),
-      traceId: traceContext.traceId,
-      spanId: traceContext.spanId,
     });
-
     next();
   } catch (error) {
     // Fallback to regular logger if trace context setup fails

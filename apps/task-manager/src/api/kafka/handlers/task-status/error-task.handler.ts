@@ -5,7 +5,6 @@ import { WebCrawlErrorTaskMessageDto } from '../../dtos';
 import { IWebCrawlTaskManagerPort } from '../../../../application/ports/web-crawl-task-manager.port';
 import { logger } from '../../../../common/utils/logger';
 import { TaskStatus } from '../../../../common/enums/task-status.enum';
-import { TraceAttributes } from '../../../../common/utils/tracing/trace-attributes';
 
 /**
  * Handler for error task messages
@@ -21,10 +20,10 @@ export class ErrorTaskHandler extends BaseHandler {
    */
   async process(message: EachMessagePayload): Promise<void> {
     const handlerName = 'ErrorTaskHandler';
-    const correlationId = this.logProcessingStart(message, handlerName);
+    const processingId = this.logProcessingStart(message, handlerName);
 
-    // Use tracing wrapper for the entire message processing
-    await this.traceKafkaMessage(message, 'error_task_processing', async () => {
+    // Process message (auto-instrumentation creates consumer span)
+    {
       try {
         // Extract headers
         const headers = this.extractHeaders(message.message.headers);
@@ -34,10 +33,10 @@ export class ErrorTaskHandler extends BaseHandler {
           throw new Error('Task ID is required in message headers');
         }
 
-        // Add trace event for header extraction
-        this.addTraceEvent('headers_extracted', {
+        // Add business event for header extraction
+        this.addBusinessEvent('headers_extracted', {
           taskId: id,
-          correlationId,
+          processingId,
         });
 
         // Parse message body
@@ -55,7 +54,7 @@ export class ErrorTaskHandler extends BaseHandler {
             message,
             handlerName,
             validationResult.errorMessage,
-            correlationId
+            processingId
           );
           throw new Error(
             `Invalid error task data: ${validationResult.errorMessage}`
@@ -65,26 +64,21 @@ export class ErrorTaskHandler extends BaseHandler {
         const validatedData =
           validationResult.validatedData as WebCrawlErrorTaskMessageDto;
 
-        // Add trace event for validation
-        this.addTraceEvent('body_validated', {
+        // Add business event for validation
+        this.addBusinessEvent('body_validated', {
           taskId: id,
-          correlationId,
+          processingId,
           'validation.duration': Date.now(),
         });
 
-        // Set task error attributes
-        this.setTraceAttributes(
-          TraceAttributes.createTaskAttributes(
-            id,
-            TaskStatus.ERROR,
-            undefined,
-            undefined,
-            {
-              'error.message': validatedData.error,
-              correlationId,
-            }
-          )
-        );
+        // Add business attributes on active span
+        this.addBusinessAttributes({
+          'business.operation': 'error_task',
+          'business.entity': 'web_crawl_task',
+          'task.id': id,
+          'task.status': TaskStatus.ERROR,
+          'error.message': validatedData.error,
+        });
 
         // Update the task status to error
         const updatedTask =
@@ -98,53 +92,48 @@ export class ErrorTaskHandler extends BaseHandler {
           throw new Error(`Task not found: ${id}`);
         }
 
-        // Add trace event for task error
-        this.addTraceEvent('task_error_updated', {
+        // Add business event for task error
+        this.addBusinessEvent('task_error_updated', {
           taskId: updatedTask.id,
           status: updatedTask.status,
-          correlationId,
+          processingId,
           'error.duration': Date.now(),
         });
 
         this.logProcessingSuccess(
           message,
           handlerName,
-          correlationId,
+          processingId,
           updatedTask
         );
         logger.info('Web-crawl task failed', {
-          correlationId,
+          processingId,
           taskId: updatedTask.id,
           userEmail: updatedTask.userEmail,
           status: updatedTask.status,
           error: validatedData.error,
           processingStage: 'TASK_ERROR_SUCCESS',
         });
-
-        return updatedTask;
+        // done
       } catch (error) {
-        // Add error attributes to trace
-        this.setTraceAttributes(
-          TraceAttributes.createErrorAttributes(
-            error as Error,
-            'TASK_ERROR_PROCESSING_ERROR',
-            {
-              correlationId,
-                              taskId: this.extractHeaders(message.message.headers).task_id,
-            }
-          )
-        );
+        // Add error attributes to active span
+        this.addBusinessAttributes({
+          'error.type': error instanceof Error ? error.constructor.name : 'Unknown',
+          'error.message': error instanceof Error ? error.message : String(error),
+          'error.stack': error instanceof Error ? error.stack : undefined,
+          'business.operation': 'error_task_processing_error',
+        });
 
         this.handleError(
           message,
           handlerName,
           error,
-          correlationId,
+          processingId,
           'TASK_ERROR'
         );
 
         throw error;
       }
-    });
+    }
   }
 }

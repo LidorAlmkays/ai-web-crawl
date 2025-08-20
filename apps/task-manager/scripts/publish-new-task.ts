@@ -13,11 +13,13 @@
 
 import { Kafka } from 'kafkajs';
 import { v4 as uuidv4 } from 'uuid';
+import { trace } from '@opentelemetry/api';
 
 // Config and enums from the app (reuse existing configuration and types)
 import { kafkaConfig, kafkaTopicConfig } from '../src/config';
 import { TaskStatus } from '../src/common/enums/task-status.enum';
 import { TaskType } from '../src/common/enums/task-type.enum';
+import { initOpenTelemetry } from '../src/common/utils/otel-init';
 
 type CliArgs = {
   email: string;
@@ -61,12 +63,22 @@ function isValidUrl(url: string): boolean {
   }
 }
 
+function isValidTraceparent(traceparent?: string): boolean {
+  if (!traceparent) return true; // Optional
+  const traceparentRegex = /^00-[0-9a-f]{32}-[0-9a-f]{16}-[0-9a-f]{2}$/;
+  return traceparentRegex.test(traceparent);
+}
+
 async function main(): Promise<void> {
   const { email, query, url, traceparent, tracestate } = parseArgs(process.argv.slice(2));
 
   if (!isValidEmail(email)) throw new Error('Invalid --email');
   if (!isValidUrl(url)) throw new Error('Invalid --url');
   if (!query || !query.trim()) throw new Error('Invalid --query');
+  if (!isValidTraceparent(traceparent)) throw new Error('Invalid --traceparent format (expected: 00-<32hex>-<16hex>-<2hex>)');
+
+  // Initialize OpenTelemetry for this script so kafkajs auto-instrumentation creates spans
+  const sdk = initOpenTelemetry();
 
   const kafka = new Kafka({
     clientId: kafkaConfig.clientId,
@@ -81,17 +93,31 @@ async function main(): Promise<void> {
   const producer = kafka.producer();
   const topic = kafkaTopicConfig.taskStatus;
 
-  // DTO-conformant headers for NEW task (no task_id)
-  // Use a single correlationId for end-to-end traceability
-  const correlationId = uuidv4();
+  // Generate a unique message ID for the Kafka key
+  const messageId = uuidv4();
+
+  // DTO-conformant headers for NEW task (no correlation_id)
   const headers: Record<string, string> = {
     task_type: TaskType.WEB_CRAWL,
     status: TaskStatus.NEW,
     timestamp: new Date().toISOString(),
-    correlation_id: correlationId,
+    source: 'task-manager-cli',
+    version: '1.0.0',
   };
-  if (traceparent) headers.traceparent = traceparent;
-  if (tracestate) headers.tracestate = tracestate;
+
+  // Add W3C trace context headers if provided
+  if (traceparent) {
+    headers.traceparent = traceparent;
+  }
+  if (tracestate) {
+    headers.tracestate = tracestate;
+  }
+
+  // Convert headers to Buffers as required by KafkaJS
+  const kafkaHeaders: Record<string, Buffer> = {};
+  for (const [key, value] of Object.entries(headers)) {
+    kafkaHeaders[key] = Buffer.from(value, 'utf8');
+  }
 
   // DTO-conformant body
   const body = {
@@ -104,31 +130,85 @@ async function main(): Promise<void> {
   console.log('[INFO] Preparing to publish NEW task');
   console.log('[INFO] Kafka brokers:', kafkaConfig.brokers.join(','));
   console.log('[INFO] Topic:', topic);
-  console.log('[INFO] Headers:', headers);
+  console.log('[INFO] Message ID:', messageId);
+  console.log('[INFO] Headers (raw):', headers);
+  console.log('[INFO] Headers (JSON):', JSON.stringify(headers, null, 2));
   console.log('[INFO] Body:', body);
 
   await producer.connect();
   try {
-    const res = await producer.send({
-      topic,
-      messages: [
-        {
-          key: correlationId,
-          headers,
-          value: JSON.stringify(body),
-        },
-      ],
-    });
+    // Create a parent CLI span so producer span is a child and carries trace context
+    const tracer = trace.getTracer('task-manager-cli');
+    await tracer.startActiveSpan('service.request', async (span) => {
+      try {
+        span.setAttributes({
+          'service.name': 'cli-publisher',
+          'deployment.environment': 'development',
+          'cli.command': 'publish-new-task',
+          'messaging.destination': topic,
+          'messaging.system': 'kafka',
+          'messaging.message_id': messageId,
+          'user.email': email,
+          'web.url': url,
+          'business.operation': 'publish_new_task',
+          'business.entity': 'web_crawl_task',
+        });
 
-    const r0 = res[0];
-    console.log('[SUCCESS] NEW task message published', {
-      topic,
-      partition: r0?.partition,
-      offset: r0?.offset,
-      correlationId,
+        // Manually inject trace context from active span into Kafka headers
+        const ctx = span.spanContext();
+        const traceparentValue = `00-${ctx.traceId}-${ctx.spanId}-01`;
+        
+        // Add trace context to kafka headers
+        kafkaHeaders['traceparent'] = Buffer.from(traceparentValue);
+        if (tracestate) {
+          kafkaHeaders['tracestate'] = Buffer.from(tracestate);
+        }
+        
+        console.log('[DEBUG] Injecting trace context into Kafka headers:', {
+          traceparent: traceparentValue,
+          traceId: ctx.traceId,
+          spanId: ctx.spanId,
+        });
+
+        const res = await producer.send({
+          topic,
+          messages: [
+            {
+              key: messageId, // Use messageId instead of correlationId
+              headers: kafkaHeaders,
+              value: JSON.stringify(body),
+            },
+          ],
+        });
+
+        const r0 = res[0];
+        
+        console.log('[SUCCESS] NEW task message published successfully');
+        console.log('[SUCCESS] Kafka Details:', {
+          topic,
+          partition: r0?.partition,
+          offset: r0?.offset,
+          messageId,
+        });
+        // Generate traceparent string for copy-paste
+        const traceparent = `00-${ctx.traceId}-${ctx.spanId}-01`;
+        
+        console.log('[SUCCESS] Trace Details:', {
+          traceId: ctx.traceId,
+          spanId: ctx.spanId,
+          traceparent,
+        });
+        console.log('[SUCCESS] Message will be processed by Task Manager with full trace context');
+      } finally {
+        span.end();
+      }
     });
   } finally {
     await producer.disconnect();
+    // Give OTEL time to flush, then shutdown SDK
+    await sdk.shutdown().catch(() => {
+      // Ignore shutdown errors
+    });
   }
 }
 

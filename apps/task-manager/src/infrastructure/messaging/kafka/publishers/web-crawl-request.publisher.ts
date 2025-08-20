@@ -17,11 +17,6 @@ export interface PublishOptions {
   timeout?: number;
   retries?: number;
   acks?: number;
-  traceContext?: {
-    traceparent?: string;
-    tracestate?: string;
-    correlationId?: string;
-  };
 }
 
 /**
@@ -42,7 +37,6 @@ export class WebCrawlRequestPublisher {
    */
   async publish(message: WebCrawlRequestMessageDto, options: PublishOptions = {}): Promise<PublishResult> {
     const startTime = Date.now();
-    const traceContext = this.extractTraceContext(message, options.traceContext);
 
     try {
       // Validate message before publishing
@@ -60,8 +54,8 @@ export class WebCrawlRequestPublisher {
         };
       }
 
-      // Prepare Kafka message with trace context
-      const kafkaMessage = this.prepareKafkaMessage(message, traceContext);
+      // Prepare Kafka message (auto-instrumentation handles trace context)
+      const kafkaMessage = this.prepareKafkaMessage(message);
 
       // Publish to Kafka
       const result = await this.kafkaClient.produce({
@@ -73,7 +67,7 @@ export class WebCrawlRequestPublisher {
 
       const duration = Date.now() - startTime;
 
-      logger.info('Web crawl request published successfully', {
+      logger.debug('Web crawl request published successfully', {
         taskId: message.headers.task_id,
         topic: this.topicName,
         partition: result[0]?.partition,
@@ -82,7 +76,6 @@ export class WebCrawlRequestPublisher {
         duration,
         userEmail: message.body.user_email,
         baseUrl: message.body.base_url,
-        correlationId: traceContext?.correlationId,
       });
 
       return {
@@ -103,7 +96,6 @@ export class WebCrawlRequestPublisher {
         duration,
         userEmail: message.body.user_email,
         baseUrl: message.body.base_url,
-        correlationId: traceContext?.correlationId,
         stack: error instanceof Error ? error.stack : undefined,
       });
 
@@ -124,11 +116,6 @@ export class WebCrawlRequestPublisher {
       message.headers = {
         task_id: taskId,
         timestamp: new Date().toISOString(),
-        source: 'task-manager',
-        version: '1.0.0',
-        traceparent: options.traceContext?.traceparent,
-        tracestate: options.traceContext?.tracestate,
-        correlation_id: options.traceContext?.correlationId,
       };
       message.body = {
         user_email: userEmail,
@@ -156,22 +143,15 @@ export class WebCrawlRequestPublisher {
   }
 
   /**
-   * Prepare Kafka message with proper headers and trace context
+   * Prepare Kafka message with proper headers
    */
-  private prepareKafkaMessage(message: WebCrawlRequestMessageDto, traceContext?: any) {
+  private prepareKafkaMessage(message: WebCrawlRequestMessageDto) {
     const headers: Record<string, Buffer> = {};
 
     // Add task_id header
     headers['task_id'] = Buffer.from(message.headers.task_id);
 
-    // Add correlation id if available
-    if (traceContext?.correlationId) {
-      headers['correlation_id'] = Buffer.from(traceContext.correlationId);
-    }
 
-    // Add source and version headers
-    headers['source'] = Buffer.from(message.headers.source || 'task-manager');
-    headers['version'] = Buffer.from(message.headers.version || '1.0.0');
 
     // Add timestamp
     headers['timestamp'] = Buffer.from(Date.now().toString());
@@ -183,25 +163,7 @@ export class WebCrawlRequestPublisher {
     };
   }
 
-  /**
-   * Extract trace context from message and options
-   */
-  private extractTraceContext(message: WebCrawlRequestMessageDto, optionsTraceContext?: any): any {
-    // Priority: options > message headers
-    const traceparent = optionsTraceContext?.traceparent || message.headers.traceparent;
-    const tracestate = optionsTraceContext?.tracestate || message.headers.tracestate;
-    const correlationId = optionsTraceContext?.correlationId || message.headers.correlation_id;
 
-    if (traceparent || tracestate || correlationId) {
-      return {
-        traceparent,
-        tracestate,
-        correlationId,
-      };
-    }
-
-    return null;
-  }
 
   /**
    * Get publisher status and configuration

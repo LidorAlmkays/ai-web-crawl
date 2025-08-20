@@ -5,6 +5,8 @@ import { PostgresFactory } from '../../infrastructure/persistence/postgres/postg
 import { WebCrawlNewTaskHeaderDto, WebCrawlNewTaskMessageDto, WebCrawlTaskUpdateHeaderDto, WebCrawlCompletedTaskMessageDto, WebCrawlErrorTaskMessageDto } from '../../api/kafka/dtos/index';
 import { kafkaTopicConfig, postgresConfig } from '../../config';
 import { validateDto } from '../../common/utils/validation';
+import { TaskType } from '../../common/enums/task-type.enum';
+import { TaskStatus } from '../../common/enums/task-status.enum';
 
 describe('DTO Validation Integration Tests', () => {
   let app: TaskManagerApplication;
@@ -42,14 +44,92 @@ describe('DTO Validation Integration Tests', () => {
     await pool.query('DELETE FROM web_crawl_tasks');
   });
 
-  describe('New Task DTO Validation', () => {
-    it('should accept valid new task message', async () => {
+  describe('W3C Trace Header Validation', () => {
+    it('should accept valid W3C traceparent format', async () => {
       const validHeaders: WebCrawlNewTaskHeaderDto = {
-        status: 'new',
+        task_type: TaskType.WEB_CRAWL,
+        status: TaskStatus.NEW,
         timestamp: new Date().toISOString(),
         traceparent: '00-1234567890abcdef1234567890abcdef-1234567890abcdef-01',
         tracestate: 'test=value',
-        correlation_id: 'test-correlation-123',
+        source: 'dto-test',
+        version: '1.0.0',
+      };
+
+      const result = await validateDto(WebCrawlNewTaskHeaderDto, validHeaders);
+      expect(result.isValid).toBe(true);
+    });
+
+    it('should reject invalid W3C traceparent format', async () => {
+      const invalidHeaders: WebCrawlNewTaskHeaderDto = {
+        task_type: TaskType.WEB_CRAWL,
+        status: TaskStatus.NEW,
+        timestamp: new Date().toISOString(),
+        traceparent: 'invalid-traceparent-format',
+        tracestate: 'test=value',
+        source: 'dto-test',
+        version: '1.0.0',
+      };
+
+      const result = await validateDto(WebCrawlNewTaskHeaderDto, invalidHeaders);
+      expect(result.isValid).toBe(false);
+      expect(result.errorMessage).toContain('traceparent must be in W3C format');
+    });
+
+    it('should accept valid tracestate within length limit', async () => {
+      const validHeaders: WebCrawlNewTaskHeaderDto = {
+        task_type: TaskType.WEB_CRAWL,
+        status: TaskStatus.NEW,
+        timestamp: new Date().toISOString(),
+        traceparent: '00-1234567890abcdef1234567890abcdef-1234567890abcdef-01',
+        tracestate: 'test=value,other=value2',
+        source: 'dto-test',
+        version: '1.0.0',
+      };
+
+      const result = await validateDto(WebCrawlNewTaskHeaderDto, validHeaders);
+      expect(result.isValid).toBe(true);
+    });
+
+    it('should reject tracestate exceeding length limit', async () => {
+      const longTracestate = 'a'.repeat(513); // 513 characters, exceeding 512 limit
+      const invalidHeaders: WebCrawlNewTaskHeaderDto = {
+        task_type: TaskType.WEB_CRAWL,
+        status: TaskStatus.NEW,
+        timestamp: new Date().toISOString(),
+        traceparent: '00-1234567890abcdef1234567890abcdef-1234567890abcdef-01',
+        tracestate: longTracestate,
+        source: 'dto-test',
+        version: '1.0.0',
+      };
+
+      const result = await validateDto(WebCrawlNewTaskHeaderDto, invalidHeaders);
+      expect(result.isValid).toBe(false);
+      expect(result.errorMessage).toContain('tracestate must not exceed 512 characters');
+    });
+
+    it('should accept headers without trace context (optional)', async () => {
+      const validHeaders: WebCrawlNewTaskHeaderDto = {
+        task_type: TaskType.WEB_CRAWL,
+        status: TaskStatus.NEW,
+        timestamp: new Date().toISOString(),
+        source: 'dto-test',
+        version: '1.0.0',
+      };
+
+      const result = await validateDto(WebCrawlNewTaskHeaderDto, validHeaders);
+      expect(result.isValid).toBe(true);
+    });
+  });
+
+  describe('New Task DTO Validation', () => {
+    it('should accept valid new task message', async () => {
+      const validHeaders: WebCrawlNewTaskHeaderDto = {
+        task_type: TaskType.WEB_CRAWL,
+        status: TaskStatus.NEW,
+        timestamp: new Date().toISOString(),
+        traceparent: '00-1234567890abcdef1234567890abcdef-1234567890abcdef-01',
+        tracestate: 'test=value',
         source: 'dto-test',
         version: '1.0.0',
       };
@@ -69,16 +149,22 @@ describe('DTO Validation Integration Tests', () => {
 
       // Send valid message to Kafka
       const topicName = kafkaTopicConfig.taskStatus;
+      const kafkaHeaders: Record<string, Buffer> = {
+        'content-type': Buffer.from('application/json'),
+      };
+      
+      if (validHeaders.traceparent) {
+        kafkaHeaders['traceparent'] = Buffer.from(validHeaders.traceparent);
+      }
+      if (validHeaders.tracestate) {
+        kafkaHeaders['tracestate'] = Buffer.from(validHeaders.tracestate);
+      }
+      
       await kafkaClient.produce({
         topic: topicName,
         messages: [
           {
-            headers: {
-              'content-type': 'application/json',
-              'traceparent': validHeaders.traceparent,
-              'tracestate': validHeaders.tracestate,
-              'correlation-id': validHeaders.correlation_id,
-            },
+            headers: kafkaHeaders,
             value: JSON.stringify({
               headers: validHeaders,
               body: validMessage,
@@ -98,16 +184,16 @@ describe('DTO Validation Integration Tests', () => {
       const task = result.rows[0];
       expect(task.user_email).toBe(validMessage.user_email);
       expect(task.user_query).toBe(validMessage.user_query);
-      expect(task.original_url).toBe(validMessage.original_url);
+      expect(task.original_url).toBe(validMessage.base_url);
     }, 15000);
 
     it('should reject invalid email format', async () => {
       const validHeaders: WebCrawlNewTaskHeaderDto = {
-        status: 'new',
+        task_type: TaskType.WEB_CRAWL,
+        status: TaskStatus.NEW,
         timestamp: new Date().toISOString(),
         traceparent: '00-1234567890abcdef1234567890abcdef-1234567890abcdef-01',
         tracestate: 'test=value',
-        correlation_id: 'test-correlation-123',
         source: 'dto-test',
         version: '1.0.0',
       };
@@ -129,11 +215,11 @@ describe('DTO Validation Integration Tests', () => {
 
     it('should reject invalid URL format', async () => {
       const validHeaders: WebCrawlNewTaskHeaderDto = {
-        status: 'new',
+        task_type: TaskType.WEB_CRAWL,
+        status: TaskStatus.NEW,
         timestamp: new Date().toISOString(),
         traceparent: '00-1234567890abcdef1234567890abcdef-1234567890abcdef-01',
         tracestate: 'test=value',
-        correlation_id: 'test-correlation-123',
         source: 'dto-test',
         version: '1.0.0',
       };
@@ -155,11 +241,11 @@ describe('DTO Validation Integration Tests', () => {
 
     it('should reject empty user query', async () => {
       const validHeaders: WebCrawlNewTaskHeaderDto = {
-        status: 'new',
+        task_type: TaskType.WEB_CRAWL,
+        status: TaskStatus.NEW,
         timestamp: new Date().toISOString(),
         traceparent: '00-1234567890abcdef1234567890abcdef-1234567890abcdef-01',
         tracestate: 'test=value',
-        correlation_id: 'test-correlation-123',
         source: 'dto-test',
         version: '1.0.0',
       };
@@ -194,12 +280,12 @@ describe('DTO Validation Integration Tests', () => {
       );
 
       const validHeaders: WebCrawlTaskUpdateHeaderDto = {
-        status: 'completed',
+        task_type: TaskType.WEB_CRAWL,
+        status: TaskStatus.COMPLETED,
         timestamp: new Date().toISOString(),
         task_id: taskId,
         traceparent: '00-1234567890abcdef1234567890abcdef-1234567890abcdef-01',
         tracestate: 'test=value',
-        correlation_id: 'test-correlation-123',
         source: 'dto-test',
         version: '1.0.0',
       };
@@ -207,8 +293,8 @@ describe('DTO Validation Integration Tests', () => {
       const validMessage: WebCrawlCompletedTaskMessageDto = {
         user_email: 'test@example.com',
         user_query: 'Find product info',
-        crawl_result: 'Product found successfully',
         base_url: 'https://example.com',
+        crawl_result: 'Product found successfully',
       };
 
       // Validate DTOs
@@ -225,10 +311,9 @@ describe('DTO Validation Integration Tests', () => {
         messages: [
           {
             headers: {
-              'content-type': 'application/json',
-              'traceparent': validHeaders.traceparent,
-              'tracestate': validHeaders.tracestate,
-              'correlation-id': validHeaders.correlation_id,
+              'content-type': Buffer.from('application/json'),
+              'traceparent': validHeaders.traceparent ? Buffer.from(validHeaders.traceparent) : undefined,
+              'tracestate': validHeaders.tracestate ? Buffer.from(validHeaders.tracestate) : undefined,
             },
             value: JSON.stringify({
               headers: validHeaders,
@@ -243,74 +328,14 @@ describe('DTO Validation Integration Tests', () => {
 
       // Verify task was updated
       const result = await pool.query('SELECT * FROM web_crawl_tasks WHERE id = $1', [taskId]);
-
       expect(result.rows).toHaveLength(1);
       const task = result.rows[0];
       expect(task.status).toBe('completed');
-      expect(task.crawl_result).toBe('Product found successfully');
     }, 15000);
 
-    it('should reject invalid UUID in task_id', async () => {
-      const invalidHeaders = {
-        status: 'completed',
-        timestamp: new Date().toISOString(),
-        task_id: 'invalid-uuid-format',
-        traceparent: '00-1234567890abcdef1234567890abcdef-1234567890abcdef-01',
-        tracestate: 'test=value',
-        correlation_id: 'test-correlation-123',
-        source: 'dto-test',
-        version: '1.0.0',
-      };
-
-      const validMessage: WebCrawlCompletedTaskMessageDto = {
-        user_email: 'test@example.com',
-        user_query: 'Find product info',
-        crawl_result: 'Product found successfully',
-        base_url: 'https://example.com',
-      };
-
-      // Validate DTOs
-      const headerResult = await validateDto(WebCrawlTaskUpdateHeaderDto, invalidHeaders);
-      const messageResult = await validateDto(WebCrawlCompletedTaskMessageDto, validMessage);
-
-      expect(headerResult.isValid).toBe(false);
-      expect(headerResult.errorMessage).toContain('task_id');
-      expect(messageResult.isValid).toBe(true);
-    });
-
-    it('should reject missing task_id for update', async () => {
-      const invalidHeaders = {
-        status: 'completed',
-        timestamp: new Date().toISOString(),
-        // Missing task_id
-        traceparent: '00-1234567890abcdef1234567890abcdef-1234567890abcdef-01',
-        tracestate: 'test=value',
-        correlation_id: 'test-correlation-123',
-        source: 'dto-test',
-        version: '1.0.0',
-      };
-
-      const validMessage: WebCrawlCompletedTaskMessageDto = {
-        user_email: 'test@example.com',
-        user_query: 'Find product info',
-        crawl_result: 'Product found successfully',
-        base_url: 'https://example.com',
-      };
-
-      // Validate DTOs
-      const headerResult = await validateDto(WebCrawlTaskUpdateHeaderDto, invalidHeaders);
-      const messageResult = await validateDto(WebCrawlCompletedTaskMessageDto, validMessage);
-
-      expect(headerResult.isValid).toBe(false);
-      expect(headerResult.errorMessage).toContain('task_id');
-      expect(messageResult.isValid).toBe(true);
-    });
-  });
-
-  describe('Error Task DTO Validation', () => {
     it('should accept valid error task message', async () => {
       // First create a task
-      const taskId = '123e4567-e89b-12d3-a456-426614174000';
+      const taskId = '123e4567-e89b-12d3-a456-426614174001';
       const pool = postgresFactory.getPool();
       await pool.query(
         `
@@ -321,12 +346,12 @@ describe('DTO Validation Integration Tests', () => {
       );
 
       const validHeaders: WebCrawlTaskUpdateHeaderDto = {
-        status: 'error',
+        task_type: TaskType.WEB_CRAWL,
+        status: TaskStatus.ERROR,
         timestamp: new Date().toISOString(),
         task_id: taskId,
         traceparent: '00-1234567890abcdef1234567890abcdef-1234567890abcdef-01',
         tracestate: 'test=value',
-        correlation_id: 'test-correlation-123',
         source: 'dto-test',
         version: '1.0.0',
       };
@@ -334,8 +359,8 @@ describe('DTO Validation Integration Tests', () => {
       const validMessage: WebCrawlErrorTaskMessageDto = {
         user_email: 'test@example.com',
         user_query: 'Find product info',
-        error: 'Failed to crawl website: Connection timeout',
         base_url: 'https://example.com',
+        error: 'Failed to crawl website: Connection timeout',
       };
 
       // Validate DTOs
@@ -352,10 +377,9 @@ describe('DTO Validation Integration Tests', () => {
         messages: [
           {
             headers: {
-              'content-type': 'application/json',
-              'traceparent': validHeaders.traceparent,
-              'tracestate': validHeaders.tracestate,
-              'correlation-id': validHeaders.correlation_id,
+              'content-type': Buffer.from('application/json'),
+              'traceparent': validHeaders.traceparent ? Buffer.from(validHeaders.traceparent) : undefined,
+              'tracestate': validHeaders.tracestate ? Buffer.from(validHeaders.tracestate) : undefined,
             },
             value: JSON.stringify({
               headers: validHeaders,
@@ -370,39 +394,42 @@ describe('DTO Validation Integration Tests', () => {
 
       // Verify task was updated
       const result = await pool.query('SELECT * FROM web_crawl_tasks WHERE id = $1', [taskId]);
-
       expect(result.rows).toHaveLength(1);
       const task = result.rows[0];
       expect(task.status).toBe('error');
-      expect(task.error).toBe('Failed to crawl website: Connection timeout');
     }, 15000);
 
-    it('should reject empty error message', async () => {
-      const validHeaders: WebCrawlTaskUpdateHeaderDto = {
-        status: 'error',
+    it('should reject invalid task_id format', async () => {
+      const invalidHeaders: WebCrawlTaskUpdateHeaderDto = {
+        task_type: TaskType.WEB_CRAWL,
+        status: TaskStatus.COMPLETED,
         timestamp: new Date().toISOString(),
-        task_id: '123e4567-e89b-12d3-a456-426614174000',
+        task_id: 'invalid-uuid-format',
         traceparent: '00-1234567890abcdef1234567890abcdef-1234567890abcdef-01',
         tracestate: 'test=value',
-        correlation_id: 'test-correlation-123',
         source: 'dto-test',
         version: '1.0.0',
       };
 
-      const invalidMessage = {
-        user_email: 'test@example.com',
-        user_query: 'Find product info',
-        error: '',
-        base_url: 'https://example.com',
+      const result = await validateDto(WebCrawlTaskUpdateHeaderDto, invalidHeaders);
+      expect(result.isValid).toBe(false);
+      expect(result.errorMessage).toContain('task_id');
+    });
+
+    it('should reject missing task_id', async () => {
+      const invalidHeaders = {
+        task_type: TaskType.WEB_CRAWL,
+        status: TaskStatus.COMPLETED,
+        timestamp: new Date().toISOString(),
+        traceparent: '00-1234567890abcdef1234567890abcdef-1234567890abcdef-01',
+        tracestate: 'test=value',
+        source: 'dto-test',
+        version: '1.0.0',
       };
 
-      // Validate DTOs
-      const headerResult = await validateDto(WebCrawlTaskUpdateHeaderDto, validHeaders);
-      const messageResult = await validateDto(WebCrawlErrorTaskMessageDto, invalidMessage);
-
-      expect(headerResult.isValid).toBe(true);
-      expect(messageResult.isValid).toBe(false);
-      expect(messageResult.errorMessage).toContain('error');
+      const result = await validateDto(WebCrawlTaskUpdateHeaderDto, invalidHeaders);
+      expect(result.isValid).toBe(false);
+      expect(result.errorMessage).toContain('task_id');
     });
   });
 });

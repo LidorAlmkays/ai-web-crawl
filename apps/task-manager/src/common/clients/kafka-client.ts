@@ -98,7 +98,7 @@ export class KafkaClient {
       this.isConnected = true;
 
       // Log important event (Kafka connection) at INFO level
-      logger.info('Kafka connected successfully');
+      logger.debug('Kafka connected successfully');
     } catch (error) {
       logger.error('Failed to connect to Kafka', { error });
       throw error;
@@ -472,7 +472,7 @@ export class KafkaClient {
   ): Promise<void> {
     try {
       await this.consumer.pause(topics);
-      logger.info('Topics paused successfully', { topics });
+      logger.debug('Topics paused successfully', { topics });
     } catch (error) {
       logger.error('Failed to pause topics', { error, topics });
       throw error;
@@ -495,7 +495,7 @@ export class KafkaClient {
   ): Promise<void> {
     try {
       await this.consumer.resume(topics);
-      logger.info('Topics resumed successfully', { topics });
+      logger.debug('Topics resumed successfully', { topics });
     } catch (error) {
       logger.error('Failed to resume topics', { error, topics });
       throw error;

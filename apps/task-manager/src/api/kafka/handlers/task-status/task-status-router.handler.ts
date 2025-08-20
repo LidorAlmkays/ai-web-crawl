@@ -68,11 +68,12 @@ export class TaskStatusRouterHandler extends BaseHandler {
    */
   async process(message: EachMessagePayload): Promise<void> {
     const handlerName = 'TaskStatusRouterHandler';
-    const correlationId = this.logProcessingStart(message, handlerName);
+    const processingId = this.logProcessingStart(message, handlerName);
 
     try {
       // Extract and validate base headers first
       const headers = this.extractHeaders(message.message.headers);
+      
       const baseValidation = await validateDto(BaseTaskHeaderDto, headers);
 
       if (!baseValidation.isValid) {
@@ -80,7 +81,7 @@ export class TaskStatusRouterHandler extends BaseHandler {
           message,
           handlerName,
           baseValidation.errorMessage,
-          correlationId
+          processingId
         );
         throw new Error(`Invalid headers: ${baseValidation.errorMessage}`);
       }
@@ -95,7 +96,7 @@ export class TaskStatusRouterHandler extends BaseHandler {
               message,
               handlerName,
               newValidation.errorMessage,
-              correlationId
+              processingId
             );
             throw new Error(`Invalid new-task headers: ${newValidation.errorMessage}`);
           }
@@ -112,7 +113,7 @@ export class TaskStatusRouterHandler extends BaseHandler {
               message,
               handlerName,
               updValidation.errorMessage,
-              correlationId
+              processingId
             );
             throw new Error(
               `Invalid update-task headers: ${updValidation.errorMessage}`
@@ -131,7 +132,7 @@ export class TaskStatusRouterHandler extends BaseHandler {
         logger.error(`No handler registered for status: ${status}`, {
           status,
           receivedMessage: message.message.value?.toString(),
-          correlationId,
+          processingId,
           availableStatuses: Object.keys(this.handlers),
           topic: message.topic,
           partition: message.partition,
@@ -146,7 +147,7 @@ export class TaskStatusRouterHandler extends BaseHandler {
       logger.debug(
         `Routing task-status message to handler for status: ${status}`,
         {
-          correlationId,
+          processingId,
           status,
           topic: message.topic,
           partition: message.partition,
@@ -157,9 +158,9 @@ export class TaskStatusRouterHandler extends BaseHandler {
 
       await handler.process(message);
 
-      this.logProcessingSuccess(message, handlerName, correlationId);
+      this.logProcessingSuccess(message, handlerName, processingId);
       logger.debug(`Task-status message routed successfully`, {
-        correlationId,
+        processingId,
         status,
         topic: message.topic,
         partition: message.partition,
@@ -171,7 +172,7 @@ export class TaskStatusRouterHandler extends BaseHandler {
         message,
         handlerName,
         error,
-        correlationId,
+        processingId,
         'MESSAGE_ROUTING'
       );
     }

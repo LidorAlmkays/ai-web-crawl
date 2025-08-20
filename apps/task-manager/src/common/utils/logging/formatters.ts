@@ -13,8 +13,7 @@ export class ConsoleFormatter {
    * @returns Formatted string ready for console output
    */
   static format(record: LogRecord): string {
-    const { level, service, timestamp, message, metadata, traceId, spanId } =
-      record;
+    const { level, service, timestamp, message, metadata, trace } = record;
 
     // Build the prefix parts
     const parts = [
@@ -24,11 +23,14 @@ export class ConsoleFormatter {
     ];
 
     // Add trace context if available
-    if (traceId) {
-      parts.push(`trace:${traceId}`);
+    if (trace.traceId && trace.traceId !== '00000000000000000000000000000000') {
+      parts.push(`traceId:${trace.traceId}`);
     }
-    if (spanId) {
-      parts.push(`span:${spanId}`);
+    if (trace.spanId && trace.spanId !== '0000000000000000') {
+      parts.push(`spanId:${trace.spanId}`);
+    }
+    if (trace.parentSpanId) {
+      parts.push(`parentId:${trace.parentSpanId}`);
     }
 
     // Create the main log line
@@ -106,11 +108,11 @@ export class OTELFormatter {
     };
 
     // Add trace context if available
-    if (record.traceId) {
-      otelRecord.traceId = record.traceId;
+    if (record.trace.traceId && record.trace.traceId !== '00000000000000000000000000000000') {
+      otelRecord.traceId = record.trace.traceId;
     }
-    if (record.spanId) {
-      otelRecord.spanId = record.spanId;
+    if (record.trace.spanId && record.trace.spanId !== '0000000000000000') {
+      otelRecord.spanId = record.trace.spanId;
     }
 
     return otelRecord;

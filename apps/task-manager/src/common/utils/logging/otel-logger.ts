@@ -133,7 +133,7 @@ export class OTELLogger implements ILogger {
   }
 
   /**
-   * Create structured log record with trace context
+   * Create structured log record with enhanced trace context
    */
   private createLogRecord(
     level: LogLevel,
@@ -143,14 +143,21 @@ export class OTELLogger implements ILogger {
     const activeSpan = trace.getActiveSpan();
     const spanContext = activeSpan?.spanContext();
 
+    // Extract trace context with fallbacks
+    const traceContext = {
+      traceId: spanContext?.traceId || '00000000000000000000000000000000',
+      spanId: spanContext?.spanId || '0000000000000000',
+      parentSpanId: undefined as string | undefined,
+      traceState: spanContext?.traceState?.serialize?.() as string | undefined,
+    };
+
     return {
       timestamp: new Date().toISOString(),
       level,
       service: this.config.serviceName,
       message,
       metadata,
-      traceId: spanContext?.traceId,
-      spanId: spanContext?.spanId,
+      trace: traceContext,
     };
   }
 
@@ -207,8 +214,8 @@ export class OTELLogger implements ILogger {
                     severityText: record.level.toUpperCase(),
                     body: { stringValue: record.message },
                     attributes: this.buildOTELAttributes(record.metadata),
-                    traceId: record.traceId,
-                    spanId: record.spanId,
+                    traceId: record.trace.traceId,
+                    spanId: record.trace.spanId,
                   },
                 ],
               },

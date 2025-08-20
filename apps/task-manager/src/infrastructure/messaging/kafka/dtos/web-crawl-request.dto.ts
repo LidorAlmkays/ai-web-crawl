@@ -35,21 +35,6 @@ export class WebCrawlRequestHeaderDto {
 	@IsString()
 	@MaxLength(255)
 	tracestate?: string;
-
-	@IsOptional()
-	@IsString()
-	@MaxLength(255)
-	correlation_id?: string;
-
-	@IsOptional()
-	@IsString()
-	@MaxLength(50)
-	source?: string = 'task-manager';
-
-	@IsOptional()
-	@IsString()
-	@MaxLength(50)
-	version?: string = '1.0.0';
 }
 
 /**

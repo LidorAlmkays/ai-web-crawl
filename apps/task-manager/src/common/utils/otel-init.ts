@@ -6,29 +6,12 @@ import { resourceFromAttributes } from '@opentelemetry/resources';
 import { SemanticResourceAttributes } from '@opentelemetry/semantic-conventions';
 import { BatchSpanProcessor } from '@opentelemetry/sdk-trace-base';
 import { getTracingConfig, validateTracingConfig } from '../../config/tracing';
+import { SpanDebugger } from './tracing/span-debug';
 
-// Suppress instrumentation warnings for modules that may already be loaded
-// Set environment variables to suppress OTEL warnings
+// Set environment variables for OTEL configuration
 process.env.OTEL_NODE_RESOURCE_DETECTORS = 'none';
 process.env.OTEL_TRACES_SAMPLER = 'always_on';
 process.env.OTEL_TRACES_SAMPLER_ARG = '1.0';
-
-// Override console.warn to suppress specific OTEL warnings
-const originalWarn = console.warn;
-console.warn = (...args: any[]) => {
-  const message = args[0];
-  if (
-    typeof message === 'string' &&
-    (message.includes('Module express has been loaded before') ||
-      message.includes('Module kafkajs has been loaded before') ||
-      message.includes('Module pg has been loaded before') ||
-      message.includes('Module pg-pool has been loaded before'))
-  ) {
-    // Suppress these specific warnings
-    return;
-  }
-  originalWarn.apply(console, args);
-};
 
 /**
  * Initialize OpenTelemetry with enhanced tracing support
@@ -39,6 +22,7 @@ console.warn = (...args: any[]) => {
  * - Resource attributes for service identification
  * - Auto-instrumentation for common libraries
  * - Graceful shutdown handling
+ * - Development span debugging (non-production only)
  */
 export const initOpenTelemetry = () => {
   // Get and validate tracing configuration
@@ -86,28 +70,29 @@ export const initOpenTelemetry = () => {
     spanProcessors: [spanProcessor],
     instrumentations: [
       getNodeAutoInstrumentations({
-        // Disable specific instrumentations that cause warnings
-        '@opentelemetry/instrumentation-express': {
-          enabled: false,
-        },
-        '@opentelemetry/instrumentation-kafkajs': {
-          enabled: false,
-        },
-        '@opentelemetry/instrumentation-pg': {
-          enabled: false,
-        },
+        // Enable core auto-instrumentations (no custom hooks to satisfy typings)
+        '@opentelemetry/instrumentation-express': { enabled: true },
+        '@opentelemetry/instrumentation-kafkajs': { enabled: true },
+        '@opentelemetry/instrumentation-pg': { enabled: true },
       }),
     ],
   });
 
   // Start the SDK
   sdk.start();
-  diag.info('OpenTelemetry SDK started with trace support', {
+  diag.info('OpenTelemetry SDK started with auto-instrumentation enabled', {
     serviceName: config.serviceName,
     environment: config.environment,
     samplingRate: config.samplingRate,
     exportEndpoint: config.exportEndpoint,
+    autoInstrumentations: ['express', 'kafkajs', 'pg'],
   });
+
+  // Enable span debugging in development environment
+  if (process.env.NODE_ENV !== 'production') {
+    SpanDebugger.enable();
+    diag.info('Span debugging enabled for development environment');
+  }
 
   // Graceful shutdown handling
   process.on('SIGTERM', () => {

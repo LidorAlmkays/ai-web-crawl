@@ -245,7 +245,7 @@ export class HealthCheckService implements IHealthCheckService {
 
     const duration = Date.now() - startTime;
 
-    logger.info('System health check completed', {
+    logger.debug('System health check completed', {
       status,
       duration,
       downChecks,

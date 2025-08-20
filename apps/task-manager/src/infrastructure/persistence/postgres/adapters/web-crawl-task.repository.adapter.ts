@@ -1,487 +1,341 @@
-import { IWebCrawlTaskRepositoryPort } from '../../../../infrastructure/ports/web-crawl-task-repository.port';
+import { IWebCrawlTaskRepositoryPort } from '../../../ports/web-crawl-task-repository.port';
 import { WebCrawlTask } from '../../../../domain/entities/web-crawl-task.entity';
 import { TaskStatus } from '../../../../common/enums/task-status.enum';
-import { Pool } from 'pg';
+import { PostgresFactory } from '../postgres.factory';
 import { logger } from '../../../../common/utils/logger';
-import { TraceManager } from '../../../../common/utils/tracing/trace-manager';
-import { TraceAttributes } from '../../../../common/utils/tracing/trace-attributes';
+import { trace } from '@opentelemetry/api';
 
 /**
- * Web Crawl Task Repository Adapter
+ * PostgreSQL adapter for WebCrawlTask repository operations
  *
- * PostgreSQL implementation of the web crawl task repository port.
- * Handles all database operations for web crawl task entities.
+ * This adapter implements the IWebCrawlTaskRepositoryPort interface
+ * and provides PostgreSQL-specific implementations for all repository
+ * operations related to web crawling tasks.
  *
- * This adapter implements the IWebCrawlTaskRepositoryPort interface and provides
- * concrete PostgreSQL-specific implementations for all task persistence operations.
- * It uses stored procedures and functions for database operations and includes
- * comprehensive error handling and logging.
- *
- * The adapter follows the Repository pattern and Clean Architecture principles,
- * abstracting database-specific details from the application layer.
+ * The adapter handles:
+ * - Database connection management via PostgresFactory
+ * - SQL query execution with proper error handling
+ * - Data transformation between database rows and domain entities
+ * - Transaction management for complex operations
+ * - Performance monitoring and logging
  */
-export class WebCrawlTaskRepositoryAdapter
-  implements IWebCrawlTaskRepositoryPort
-{
-  private traceManager = TraceManager.getInstance();
+export class WebCrawlTaskRepositoryAdapter implements IWebCrawlTaskRepositoryPort {
+  private readonly postgresFactory: PostgresFactory;
 
-  /**
-   * Creates a new WebCrawlTaskRepositoryAdapter instance
-   *
-   * @param pool - PostgreSQL connection pool for database operations
-   */
-  constructor(private readonly pool: Pool) {}
-
-  /**
-   * Creates a new web crawl task record in the database using stored procedure
-   *
-   * This method persists a WebCrawlTask domain entity to the PostgreSQL database
-   * using the create_web_crawl_task stored procedure. It handles parameter mapping
-   * and provides comprehensive error logging.
-   *
-   * @param task - The WebCrawlTask domain entity to persist
-   * @returns Promise resolving to the created WebCrawlTask entity
-   * @throws Error - When database operation fails or stored procedure errors occur
-   *
-   * @example
-   * ```typescript
-   * const task = WebCrawlTask.create(id, email, query, url, new Date());
-   * const createdTask = await repository.createWebCrawlTask(task);
-   * ```
-   */
-  public async createWebCrawlTask(task: WebCrawlTask): Promise<WebCrawlTask> {
-    return this.traceManager.traceOperation(
-      'database_create_web_crawl_task',
-      async () => {
-        const operation = 'createWebCrawlTask';
-        const sql =
-          'SELECT create_web_crawl_task($1, $2, $3, $4, $5, $6, $7)';
-        const params = [
-          task.userEmail,
-          task.userQuery,
-          task.originalUrl,
-          task.receivedAt.toISOString(),
-          task.status,
-          task.createdAt.toISOString(),
-          task.updatedAt.toISOString(),
-        ];
-
-        // Set database operation attributes
-        this.traceManager.setAttributes(
-          TraceAttributes.createDatabaseAttributes(
-            'INSERT',
-            'web_crawl_tasks',
-            sql,
-            {
-              'task.id': task.id,
-              'user.email': task.userEmail,
-              'database.operation': operation,
-            }
-          )
-        );
-
-        logger.debug('Executing createWebCrawlTask procedure', {
-          taskId: task.id,
-          operation,
-          sql,
-          params: this.sanitizeParams(params),
-        });
-
-        try {
-          // Add trace event for query execution
-          this.traceManager.addEvent('database_query_executing', {
-            taskId: task.id,
-            operation,
-            'query.type': 'stored_procedure',
-          });
-
-          const res = await this.pool.query(sql, params);
-
-          // Add trace event for successful query
-          this.traceManager.addEvent('database_query_successful', {
-            taskId: task.id,
-            operation,
-            'query.duration': Date.now(),
-          });
-
-          const returnedId = (res.rows?.[0] as any)?.create_web_crawl_task;
-          logger.debug('Web crawl task created successfully', {
-            taskId: returnedId,
-            operation,
-            status: task.status,
-          });
-          return new WebCrawlTask(
-            returnedId,
-            task.userEmail,
-            task.userQuery,
-            task.originalUrl,
-            task.receivedAt,
-            task.status,
-            task.createdAt,
-            task.updatedAt,
-            task.result,
-            task.startedAt,
-            task.finishedAt
-          );
-        } catch (error) {
-          // Add error attributes to trace
-          this.traceManager.setAttributes(
-            TraceAttributes.createErrorAttributes(
-              error as Error,
-              'DATABASE_ERROR',
-              {
-                'task.id': task.id,
-                'database.operation': operation,
-                'database.table': 'web_crawl_tasks',
-              }
-            )
-          );
-
-          this.logDatabaseError(operation, error, {
-            taskId: task.id,
-            sql,
-            params: this.sanitizeParams(params),
-            userEmail: task.userEmail,
-            status: task.status,
-          });
-          throw error;
-        }
-      },
-      {
-        [TraceAttributes.DATABASE_OPERATION]: 'INSERT',
-        [TraceAttributes.DATABASE_TABLE]: 'web_crawl_tasks',
-        'task.id': task.id,
-        'user.email': task.userEmail,
-      }
-    );
+  constructor(postgresFactory: PostgresFactory) {
+    this.postgresFactory = postgresFactory;
   }
 
   /**
-   * Updates an existing web crawl task with new status and result data using stored procedure
+   * Creates a new web crawl task in the database
    *
-   * This method updates a WebCrawlTask domain entity in the PostgreSQL database
-   * using the update_web_crawl_task stored procedure. It handles status transitions
-   * and result data updates.
-   *
-   * @param task - The updated WebCrawlTask domain entity
-   * @returns Promise resolving to the updated WebCrawlTask entity
-   * @throws Error - When database operation fails or stored procedure errors occur
-   *
-   * @example
-   * ```typescript
-   * task.markAsCompleted('Found 5 products');
-   * const updatedTask = await repository.updateWebCrawlTask(task);
-   * ```
+   * @param task - The WebCrawlTask entity to persist
+   * @returns Promise resolving to the created WebCrawlTask entity
+   * @throws Error - When database operation fails
    */
-  public async updateWebCrawlTask(task: WebCrawlTask): Promise<WebCrawlTask> {
-    const operation = 'updateWebCrawlTask';
-    const sql = 'SELECT update_web_crawl_task($1, $2, $3, $4, $5)';
-    const params = [
-      task.id,
-      task.status,
-      task.result || null,
-      task.finishedAt?.toISOString() || null,
-      task.updatedAt.toISOString(),
-    ];
+  async createWebCrawlTask(
+    userEmail: string,
+    userQuery: string,
+    originalUrl: string,
+    receivedAt: Date
+  ): Promise<WebCrawlTask> {
+    const activeSpan = trace.getActiveSpan();
+    
+    // Add business attributes to active span
+    if (activeSpan) {
+      activeSpan.setAttributes({
+        'business.operation': 'create_web_crawl_task',
+        'business.entity': 'web_crawl_task',
+        'database.operation': 'INSERT',
+        'database.table': 'web_crawl_tasks',
+      });
+    }
 
-    logger.debug('Executing updateWebCrawlTask procedure', {
-      taskId: task.id,
-      newStatus: task.status,
-      operation,
-      sql,
-      params: this.sanitizeParams(params),
-    });
+    const pool = this.postgresFactory.getPool();
+    const client = await pool.connect();
 
     try {
-      await this.pool.query(sql, params);
+      // Add business event for database operation start
+      if (activeSpan) {
+        activeSpan.addEvent('business.database_query_executing', {
+          operation: 'INSERT',
+          table: 'web_crawl_tasks',
+        });
+      }
 
-      logger.debug('Web crawl task updated successfully', {
-        taskId: task.id,
-        newStatus: task.status,
-        operation,
+      const query = `
+        INSERT INTO web_crawl_tasks (user_email, user_query, original_url, status, received_at, created_at, updated_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
+        RETURNING *
+      `;
+
+      const values = [
+        userEmail,
+        userQuery,
+        originalUrl,
+        TaskStatus.NEW,
+        receivedAt,
+        new Date(),
+        new Date(),
+      ];
+
+      const result = await client.query(query, values);
+      const createdTask = this.mapRowToEntity(result.rows[0]);
+
+      // Add business event for successful database operation
+      if (activeSpan) {
+        activeSpan.addEvent('business.database_query_successful', {
+          operation: 'INSERT',
+          table: 'web_crawl_tasks',
+          taskId: createdTask.id,
+        });
+      }
+
+      logger.debug('Web crawl task created successfully', {
+        taskId: createdTask.id,
+        userEmail: createdTask.userEmail,
+        status: createdTask.status,
       });
-      return task;
+
+      return createdTask;
     } catch (error) {
-      this.logDatabaseError(operation, error, {
-        taskId: task.id,
-        sql,
-        params: this.sanitizeParams(params),
-        newStatus: task.status,
-        hasResult: !!task.result,
+      // Add error attributes to active span
+      if (activeSpan) {
+        activeSpan.setAttributes({
+          'error.type': error instanceof Error ? error.constructor.name : 'Unknown',
+          'error.message': error instanceof Error ? error.message : String(error),
+          'error.stack': error instanceof Error ? error.stack : undefined,
+          'business.operation': 'create_web_crawl_task_error',
+        });
+      }
+
+      logger.error('Failed to create web crawl task', {
+        error: error instanceof Error ? error.message : String(error),
+        userEmail,
       });
+
       throw error;
+    } finally {
+      client.release();
     }
   }
 
   /**
-   * Retrieves a web crawl task by its unique identifier
+   * Finds a web crawl task by its unique identifier
    *
-   * This method queries the PostgreSQL database using the find_web_crawl_task_by_id
-   * function to retrieve a specific task by its ID.
-   *
-   * @param id - Unique identifier of the task to retrieve
+   * @param taskId - Unique identifier of the task to find
    * @returns Promise resolving to the WebCrawlTask entity or null if not found
-   * @throws Error - When database operation fails
-   *
-   * @example
-   * ```typescript
-   * const task = await repository.findWebCrawlTaskById('task-123');
-   * if (task) {
-   *   console.log(`Task status: ${task.status}`);
-   * }
-   * ```
    */
-  public async findWebCrawlTaskById(id: string): Promise<WebCrawlTask | null> {
-    const operation = 'findWebCrawlTaskById';
-    const sql = 'SELECT * FROM find_web_crawl_task_by_id($1)';
-    const params = [id];
-
-    logger.debug('Executing findWebCrawlTaskById function', {
-      taskId: id,
-      operation,
-      sql,
-      params,
-    });
+  async findWebCrawlTaskById(taskId: string): Promise<WebCrawlTask | null> {
+    const pool = this.postgresFactory.getPool();
+    const client = await pool.connect();
 
     try {
-      const result = await this.pool.query(sql, params);
+      const query = 'SELECT * FROM web_crawl_tasks WHERE id = $1';
+      const result = await client.query(query, [taskId]);
 
       if (result.rows.length === 0) {
-        logger.debug('Web crawl task not found', {
-          taskId: id,
-          operation,
-        });
         return null;
       }
 
-      const row = result.rows[0] as any;
-      const task = this.mapRowToWebCrawlTask(row);
-
-      logger.debug('Web crawl task found', {
-        taskId: id,
-        operation,
-        status: task.status,
-      });
-      return task;
+      return this.mapRowToEntity(result.rows[0]);
     } catch (error) {
-      this.logDatabaseError(operation, error, {
-        taskId: id,
-        sql,
-        params,
+      logger.error('Failed to find web crawl task by ID', {
+        error: error instanceof Error ? error.message : String(error),
+        taskId,
       });
       throw error;
+    } finally {
+      client.release();
     }
   }
 
   /**
-   * Finds web crawl tasks by status using database function
+   * Finds all web crawl tasks for a specific user
    *
-   * @param status - Task status to filter by (should match TaskStatus enum values)
+   * @param userEmail - Email address of the user whose tasks to find
    * @returns Promise resolving to an array of WebCrawlTask entities
-   * @throws Error - When database operation fails
-   *
-   * @example
-   * ```typescript
-   * const completedTasks = await repository.findWebCrawlTasksByStatus('completed');
-   * console.log(`Found ${completedTasks.length} completed tasks`);
-   * ```
    */
-  public async findWebCrawlTasksByStatus(
-    status: string
-  ): Promise<WebCrawlTask[]> {
-    logger.debug('Executing findWebCrawlTasksByStatus function', { status });
+  async findWebCrawlTasksByUserEmail(userEmail: string): Promise<WebCrawlTask[]> {
+    const pool = this.postgresFactory.getPool();
+    const client = await pool.connect();
 
     try {
-      const result = await this.pool.query(
-        'SELECT * FROM find_web_crawl_tasks_by_status($1)',
-        [status]
-      );
-      const tasks = result.rows.map((row) =>
-        this.mapRowToWebCrawlTask(row as Record<string, any>)
-      );
+      const query = 'SELECT * FROM web_crawl_tasks WHERE user_email = $1 ORDER BY received_at DESC';
+      const result = await client.query(query, [userEmail]);
 
-      logger.debug('Web crawl tasks found by status', {
-        status,
-        count: tasks.length,
-      });
-      return tasks;
-    } catch (error) {
-      logger.error('Failed to find web crawl tasks by status', {
-        status,
-        error,
-      });
-      throw error;
-    }
-  }
-
-  /**
-   * Finds web crawl tasks by user email using database function
-   *
-   * @param userEmail - Email address of the user whose tasks to retrieve
-   * @returns Promise resolving to an array of WebCrawlTask entities
-   * @throws Error - When database operation fails
-   *
-   * @example
-   * ```typescript
-   * const userTasks = await repository.findWebCrawlTasksByUserEmail('user@example.com');
-   * console.log(`User has ${userTasks.length} tasks`);
-   * ```
-   */
-  public async findWebCrawlTasksByUserEmail(
-    userEmail: string
-  ): Promise<WebCrawlTask[]> {
-    logger.debug('Executing findWebCrawlTasksByUserEmail function', {
-      userEmail,
-    });
-
-    try {
-      const result = await this.pool.query(
-        'SELECT * FROM find_web_crawl_tasks_by_user_email($1)',
-        [userEmail]
-      );
-      const tasks = result.rows.map((row) =>
-        this.mapRowToWebCrawlTask(row as Record<string, any>)
-      );
-
-      logger.debug('Web crawl tasks found by user email', {
-        userEmail,
-        count: tasks.length,
-      });
-      return tasks;
+      return result.rows.map((row) => this.mapRowToEntity(row));
     } catch (error) {
       logger.error('Failed to find web crawl tasks by user email', {
+        error: error instanceof Error ? error.message : String(error),
         userEmail,
-        error,
       });
       throw error;
+    } finally {
+      client.release();
     }
   }
 
   /**
-   * Finds all web crawl tasks with optional pagination using database function
+   * Finds all web crawl tasks with a specific status
    *
-   * @param limit - Maximum number of tasks to return (default: 100)
-   * @param offset - Number of tasks to skip for pagination (default: 0)
+   * @param status - TaskStatus enum value to filter by
    * @returns Promise resolving to an array of WebCrawlTask entities
-   * @throws Error - When database operation fails
-   *
-   * @example
-   * ```typescript
-   * const allTasks = await repository.findAllWebCrawlTasks(50, 0);
-   * console.log(`Retrieved ${allTasks.length} tasks`);
-   * ```
    */
-  public async findAllWebCrawlTasks(
-    limit?: number,
-    offset?: number
-  ): Promise<WebCrawlTask[]> {
-    logger.debug('Executing findAllWebCrawlTasks function', { limit, offset });
+  async findWebCrawlTasksByStatus(status: TaskStatus): Promise<WebCrawlTask[]> {
+    const pool = this.postgresFactory.getPool();
+    const client = await pool.connect();
 
     try {
-      const result = await this.pool.query(
-        'SELECT * FROM find_all_web_crawl_tasks($1, $2)',
-        [limit || 100, offset || 0]
-      );
-      const tasks = result.rows.map((row) =>
-        this.mapRowToWebCrawlTask(row as Record<string, any>)
-      );
+      const query = 'SELECT * FROM web_crawl_tasks WHERE status = $1 ORDER BY received_at DESC';
+      const result = await client.query(query, [status]);
 
-      logger.debug('Web crawl tasks found', {
-        count: tasks.length,
-        limit,
-        offset,
-      });
-      return tasks;
+      return result.rows.map((row) => this.mapRowToEntity(row));
     } catch (error) {
-      logger.error('Failed to find all web crawl tasks', { error });
+      logger.error('Failed to find web crawl tasks by status', {
+        error: error instanceof Error ? error.message : String(error),
+        status,
+      });
       throw error;
+    } finally {
+      client.release();
     }
   }
 
   /**
-   * Counts web crawl tasks by status using database function
+   * Finds all web crawl tasks in the system
    *
-   * @param status - Task status to count (should match TaskStatus enum values)
-   * @returns Promise resolving to the count of tasks with the specified status
-   * @throws Error - When database operation fails
-   *
-   * @example
-   * ```typescript
-   * const completedCount = await repository.countWebCrawlTasksByStatus('completed');
-   * console.log(`There are ${completedCount} completed tasks`);
-   * ```
+   * @returns Promise resolving to an array of all WebCrawlTask entities
    */
-  public async countWebCrawlTasksByStatus(status: string): Promise<number> {
-    logger.debug('Executing countWebCrawlTasksByStatus function', { status });
+  async findAllWebCrawlTasks(): Promise<WebCrawlTask[]> {
+    const pool = this.postgresFactory.getPool();
+    const client = await pool.connect();
 
     try {
-      const result = await this.pool.query(
-        'SELECT count_web_crawl_tasks_by_status($1)',
-        [status]
-      );
-      const count = parseInt(
-        (result.rows[0] as Record<string, any>)
-          .count_web_crawl_tasks_by_status as string
-      );
+      const query = 'SELECT * FROM web_crawl_tasks ORDER BY received_at DESC';
+      const result = await client.query(query);
 
-      logger.debug('Web crawl task count by status', { status, count });
-      return count;
+      return result.rows.map((row) => this.mapRowToEntity(row));
+    } catch (error) {
+      logger.error('Failed to find all web crawl tasks', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  /**
+   * Updates an existing web crawl task in the database
+   *
+   * @param task - The WebCrawlTask entity to update
+   * @returns Promise resolving to the updated WebCrawlTask entity
+   * @throws Error - When database operation fails
+   */
+  async updateWebCrawlTask(task: WebCrawlTask): Promise<WebCrawlTask> {
+    const pool = this.postgresFactory.getPool();
+    const client = await pool.connect();
+
+    try {
+      const query = `
+        UPDATE web_crawl_tasks 
+        SET status = $1, result = $2, updated_at = $3, finished_at = $4
+        WHERE id = $5
+        RETURNING *
+      `;
+
+      const values = [
+        task.status,
+        task.result,
+        new Date(),
+        task.finishedAt,
+        task.id,
+      ];
+
+      const result = await client.query(query, values);
+
+      if (result.rows.length === 0) {
+        throw new Error(`Task not found: ${task.id}`);
+      }
+
+      const updatedTask = this.mapRowToEntity(result.rows[0]);
+
+      logger.debug('Web crawl task updated successfully', {
+        taskId: updatedTask.id,
+        status: updatedTask.status,
+      });
+
+      return updatedTask;
+    } catch (error) {
+      logger.error('Failed to update web crawl task', {
+        error: error instanceof Error ? error.message : String(error),
+        taskId: task.id,
+        status: task.status,
+      });
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  /**
+   * Counts all web crawl tasks in the system
+   *
+   * @returns Promise resolving to the total count of tasks
+   */
+  async countAllWebCrawlTasks(): Promise<number> {
+    const pool = this.postgresFactory.getPool();
+    const client = await pool.connect();
+
+    try {
+      const query = 'SELECT COUNT(*) as count FROM web_crawl_tasks';
+      const result = await client.query(query);
+
+      return parseInt(result.rows[0].count, 10);
+    } catch (error) {
+      logger.error('Failed to count all web crawl tasks', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  /**
+   * Counts web crawl tasks with a specific status
+   *
+   * @param status - TaskStatus enum value to filter by
+   * @returns Promise resolving to the count of tasks with the specified status
+   */
+  async countWebCrawlTasksByStatus(status: TaskStatus): Promise<number> {
+    const pool = this.postgresFactory.getPool();
+    const client = await pool.connect();
+
+    try {
+      const query = 'SELECT COUNT(*) as count FROM web_crawl_tasks WHERE status = $1';
+      const result = await client.query(query, [status]);
+
+      return parseInt(result.rows[0].count, 10);
     } catch (error) {
       logger.error('Failed to count web crawl tasks by status', {
+        error: error instanceof Error ? error.message : String(error),
         status,
-        error,
       });
       throw error;
+    } finally {
+      client.release();
     }
   }
 
   /**
-   * Counts total number of web crawl tasks using database function
+   * Maps a database row to a WebCrawlTask entity
    *
-   * @returns Promise resolving to the total count of web crawl tasks
-   * @throws Error - When database operation fails
-   *
-   * @example
-   * ```typescript
-   * const totalCount = await repository.countAllWebCrawlTasks();
-   * console.log(`Total tasks in system: ${totalCount}`);
-   * ```
+   * @param row - Database row object
+   * @returns WebCrawlTask entity
    */
-  public async countAllWebCrawlTasks(): Promise<number> {
-    logger.debug('Executing countAllWebCrawlTasks function');
-
-    try {
-      const result = await this.pool.query(
-        'SELECT count_all_web_crawl_tasks()'
-      );
-      const count = parseInt(
-        (result.rows[0] as Record<string, any>)
-          .count_all_web_crawl_tasks as string
-      );
-
-      logger.debug('Total web crawl task count', { count });
-      return count;
-    } catch (error) {
-      logger.error('Failed to count all web crawl tasks', { error });
-      throw error;
-    }
-  }
-
-  /**
-   * Maps a database row to a WebCrawlTask domain entity
-   *
-   * This private method handles the conversion from database row format
-   * to domain entity format, including proper date parsing and field mapping.
-   *
-   * @param row - Database row object with snake_case column names
-   * @returns WebCrawlTask domain entity
-   *
-   * @example
-   * ```typescript
-   * const task = this.mapRowToWebCrawlTask(dbRow);
-   * ```
-   */
-  private mapRowToWebCrawlTask(row: Record<string, any>): WebCrawlTask {
+  private mapRowToEntity(row: any): WebCrawlTask {
     return new WebCrawlTask(
       row.id,
       row.user_email,
@@ -491,154 +345,11 @@ export class WebCrawlTaskRepositoryAdapter
       row.status as TaskStatus,
       new Date(row.created_at),
       new Date(row.updated_at),
-      row.data, // Database column is 'data', map to entity 'result'
-      undefined, // startedAt - not in database yet
+      row.result || null,
+      row.started_at ? new Date(row.started_at) : undefined,
       row.finished_at ? new Date(row.finished_at) : undefined
     );
   }
 
-  /**
-   * Logs database errors with detailed context and categorization
-   *
-   * This private method provides comprehensive error logging for database
-   * operations, including error categorization and severity assessment.
-   *
-   * @param operation - Name of the database operation that failed
-   * @param error - The database error object
-   * @param context - Additional context information for debugging
-   *
-   * @example
-   * ```typescript
-   * this.logDatabaseError('createWebCrawlTask', error, { taskId: '123' });
-   * ```
-   */
-  private logDatabaseError(operation: string, error: any, context: any): void {
-    const errorCategory = this.categorizeDatabaseError(error);
 
-    logger.error(`Database operation failed: ${operation}`, {
-      operation,
-      errorCategory,
-      severity: this.getDatabaseErrorSeverity(errorCategory),
-      error: {
-        name: error.name || 'DatabaseError',
-        message: error.message || 'Unknown database error',
-        code: error.code,
-        detail: error.detail,
-        hint: error.hint,
-        position: error.position,
-        where: error.where,
-        file: error.file,
-        line: error.line,
-        routine: error.routine,
-        stack: error.stack,
-      },
-      context: {
-        ...context,
-        service: 'Task Manager',
-        component: 'Database Repository',
-        database: 'PostgreSQL',
-      },
-      timestamp: new Date().toISOString(),
-    });
-  }
-
-  /**
-   * Categorizes database errors for better handling and monitoring
-   *
-   * @param error - The database error object
-   * @returns String representing the error category
-   *
-   * @example
-   * ```typescript
-   * const category = this.categorizeDatabaseError(error);
-   * // Returns: 'UNIQUE_VIOLATION', 'SYNTAX_ERROR', etc.
-   * ```
-   */
-  private categorizeDatabaseError(error: any): string {
-    if (error.code === '42P02') {
-      return 'PARAMETER_NOT_FOUND';
-    }
-    if (error.code === '42601') {
-      return 'SYNTAX_ERROR';
-    }
-    if (error.code === '22P02') {
-      return 'INVALID_ENUM_VALUE';
-    }
-    if (error.code === '23505') {
-      return 'UNIQUE_VIOLATION';
-    }
-    if (error.code === '23503') {
-      return 'FOREIGN_KEY_VIOLATION';
-    }
-    if (error.code === '23502') {
-      return 'NOT_NULL_VIOLATION';
-    }
-    if (error.code === '42703') {
-      return 'UNDEFINED_COLUMN';
-    }
-    if (error.code === '42883') {
-      return 'UNDEFINED_FUNCTION';
-    }
-    if (error.code === '42P01') {
-      return 'UNDEFINED_TABLE';
-    }
-    return 'UNKNOWN_DATABASE_ERROR';
-  }
-
-  /**
-   * Gets error severity based on database error category
-   *
-   * @param errorCategory - The categorized error type
-   * @returns String representing the error severity level
-   *
-   * @example
-   * ```typescript
-   * const severity = this.getDatabaseErrorSeverity('SYNTAX_ERROR');
-   * // Returns: 'HIGH'
-   * ```
-   */
-  private getDatabaseErrorSeverity(errorCategory: string): string {
-    switch (errorCategory) {
-      case 'SYNTAX_ERROR':
-      case 'UNDEFINED_FUNCTION':
-      case 'UNDEFINED_TABLE':
-      case 'UNDEFINED_COLUMN':
-        return 'HIGH'; // Configuration/schema issues
-      case 'PARAMETER_NOT_FOUND':
-      case 'INVALID_ENUM_VALUE':
-        return 'MEDIUM'; // Data/parameter issues
-      case 'UNIQUE_VIOLATION':
-      case 'FOREIGN_KEY_VIOLATION':
-      case 'NOT_NULL_VIOLATION':
-        return 'MEDIUM'; // Constraint violations
-      default:
-        return 'MEDIUM';
-    }
-  }
-
-  /**
-   * Sanitizes parameters for logging to remove sensitive data
-   *
-   * This method masks sensitive information like email addresses
-   * before logging to prevent data exposure in logs.
-   *
-   * @param params - Array of parameters to sanitize
-   * @returns Array of sanitized parameters
-   *
-   * @example
-   * ```typescript
-   * const sanitized = this.sanitizeParams(['user@example.com', 'query']);
-   * // Returns: ['us***@example.com', 'query']
-   * ```
-   */
-  private sanitizeParams(params: any[]): any[] {
-    return params.map((param) => {
-      if (typeof param === 'string' && param.includes('@')) {
-        // Likely an email, mask it
-        const [local, domain] = param.split('@');
-        return `${local.substring(0, 2)}***@${domain}`;
-      }
-      return param;
-    });
-  }
 }

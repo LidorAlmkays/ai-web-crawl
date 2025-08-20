@@ -60,7 +60,7 @@ async function bootstrap() {
   const app = new TaskManagerApplication();
   try {
     await app.start();
-    logger.info('Task Manager application started successfully');
+    logger.debug('Task Manager application started successfully');
   } catch (error) {
     logger.error('Failed to bootstrap Task Manager application', {
       error: error instanceof Error ? error.message : String(error),
