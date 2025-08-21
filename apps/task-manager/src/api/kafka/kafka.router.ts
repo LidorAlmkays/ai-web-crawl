@@ -4,7 +4,7 @@ import { IHandler } from './handlers/base-handler.interface';
 import { TaskStatusConsumer } from './consumers/task-status.consumer';
 import { TaskStatusRouterHandler } from './handlers/task-status/task-status-router.handler';
 import { IWebCrawlTaskManagerPort } from '../../application/ports/web-crawl-task-manager.port';
-import { kafkaTopicConfig } from '../../config/kafka-topics';
+import { kafkaConfig } from '../../config/kafka';
 
 export interface ConsumerRegistration {
 	consumer: IConsumer;
@@ -21,7 +21,7 @@ export function registerConsumers(deps: {
 	const taskStatusRouterHandler = new TaskStatusRouterHandler(
 		deps.webCrawlTaskManager
 	);
-	const taskStatusTopic = kafkaTopicConfig.taskStatus;
+	const taskStatusTopic = kafkaConfig.topics.taskStatus;
 	const taskStatusConsumer = new TaskStatusConsumer(taskStatusTopic);
 
 	registrations.push({

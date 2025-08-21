@@ -69,8 +69,7 @@
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
     "test-kafka": "tsx scripts/test-kafka-connection.ts",
-    "publish-new-task": "tsx scripts/publish-new-task.ts"
-  },
-  "dependencies": {},
-  "devDependencies": {}
+    "publish-new-task": "tsx scripts/publish-new-task.ts",
+    "test-task-updates": "tsx scripts/test-task-updates.ts"
+  }
 }

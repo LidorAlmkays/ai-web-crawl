@@ -105,6 +105,13 @@ export class WebCrawlTaskManagerService implements IWebCrawlTaskManagerPort {
       });
     }
 
+    // Success log (application layer): task persisted successfully
+    logger.info('Web crawl task created successfully', {
+      taskId: createdTask.id,
+      userEmail: createdTask.userEmail,
+      status: createdTask.status,
+    });
+
     return createdTask;
   }
 
@@ -147,7 +154,7 @@ export class WebCrawlTaskManagerService implements IWebCrawlTaskManagerPort {
         });
       }
 
-      logger.warn('Web crawl task not found', { taskId });
+      logger.error('Web crawl task not found', { taskId });
       return null;
     }
 
@@ -168,53 +175,7 @@ export class WebCrawlTaskManagerService implements IWebCrawlTaskManagerPort {
     return task;
   }
 
-  /**
-   * Retrieves all web crawl tasks for a specific user
-   *
-   * @param userEmail - Email address of the user whose tasks to retrieve
-   * @returns Promise resolving to an array of WebCrawlTask entities
-   *
-   * @example
-   * ```typescript
-   * const userTasks = await service.getWebCrawlTasksByUserEmail('user@example.com');
-   * console.log(`User has ${userTasks.length} tasks`);
-   * ```
-   */
-  async getWebCrawlTasksByUserEmail(
-    userEmail: string
-  ): Promise<WebCrawlTask[]> {
-    const activeSpan = trace.getActiveSpan();
-    
-    // Add business attributes to active span
-    if (activeSpan) {
-      activeSpan.setAttributes({
-        'business.operation': 'get_web_crawl_tasks_by_user_email',
-        'business.entity': 'web_crawl_task',
-        'user.email': userEmail,
-      });
-    }
 
-    logger.debug('Getting web crawl tasks by user email', { userEmail });
-
-    const tasks =
-      await this.webCrawlTaskRepository.findWebCrawlTasksByUserEmail(userEmail);
-
-    // Add business event for successful retrieval
-    if (activeSpan) {
-      activeSpan.addEvent('business.tasks_retrieved_by_user', {
-        userEmail,
-        taskCount: tasks.length,
-        'search.criteria': 'by_user_email',
-      });
-    }
-
-    logger.info('Retrieved web crawl tasks for user', {
-      userEmail,
-      taskCount: tasks.length,
-    });
-
-    return tasks;
-  }
 
   /**
    * Retrieves all web crawl tasks with a specific status
@@ -263,46 +224,7 @@ export class WebCrawlTaskManagerService implements IWebCrawlTaskManagerPort {
     return tasks;
   }
 
-  /**
-   * Retrieves all web crawl tasks in the system
-   *
-   * @returns Promise resolving to an array of all WebCrawlTask entities
-   *
-   * @example
-   * ```typescript
-   * const allTasks = await service.getAllWebCrawlTasks();
-   * console.log(`Total tasks in system: ${allTasks.length}`);
-   * ```
-   */
-  async getAllWebCrawlTasks(): Promise<WebCrawlTask[]> {
-    const activeSpan = trace.getActiveSpan();
-    
-    // Add business attributes to active span
-    if (activeSpan) {
-      activeSpan.setAttributes({
-        'business.operation': 'get_all_web_crawl_tasks',
-        'business.entity': 'web_crawl_task',
-      });
-    }
 
-    logger.debug('Getting all web crawl tasks');
-
-    const tasks = await this.webCrawlTaskRepository.findAllWebCrawlTasks();
-
-    // Add business event for successful retrieval
-    if (activeSpan) {
-      activeSpan.addEvent('business.all_tasks_retrieved', {
-        taskCount: tasks.length,
-        'search.criteria': 'all',
-      });
-    }
-
-    logger.info('Retrieved all web crawl tasks', {
-      taskCount: tasks.length,
-    });
-
-    return tasks;
-  }
 
   /**
    * Updates the status of an existing web crawl task
@@ -352,32 +274,18 @@ export class WebCrawlTaskManagerService implements IWebCrawlTaskManagerPort {
       hasResult: !!result,
     });
 
-    const task = await this.webCrawlTaskRepository.findWebCrawlTaskById(
-      taskId
+    // Create a minimal task entity with just the data we need for the update
+    const now = new Date();
+    const task = new WebCrawlTask(
+      taskId,
+      '', // userEmail - not needed for update
+      '', // userQuery - not needed for update  
+      '', // originalUrl - not needed for update
+      now, // receivedAt - not needed for update
+      status,
+      now, // createdAt - not needed for update
+      now  // updatedAt
     );
-    if (!task) {
-      // Add business event for task not found
-      if (activeSpan) {
-        activeSpan.addEvent('business.task_not_found_for_update', {
-          taskId,
-          requestedStatus: status,
-          'search.criteria': 'by_id',
-        });
-      }
-
-      logger.warn('Web crawl task not found for status update', { taskId });
-      return null;
-    }
-
-    // Add business event for task retrieval
-    if (activeSpan) {
-      activeSpan.addEvent('business.task_retrieved_for_update', {
-        taskId,
-        currentStatus: task.status,
-        requestedStatus: status,
-        'search.criteria': 'by_id',
-      });
-    }
 
     // Update task based on status
     if (status === TaskStatus.COMPLETED) {
@@ -393,7 +301,6 @@ export class WebCrawlTaskManagerService implements IWebCrawlTaskManagerPort {
       activeSpan.addEvent('business.domain_entity_updated', {
         taskId,
         newStatus: task.status,
-        previousStatus: task.status, // Note: domain entity doesn't track previous status
         'entity.type': 'WebCrawlTask',
       });
     }
@@ -410,7 +317,8 @@ export class WebCrawlTaskManagerService implements IWebCrawlTaskManagerPort {
       });
     }
 
-    logger.debug('Web crawl task status updated successfully', {
+    // Success log (application layer): task updated successfully in DB
+    logger.info('Web crawl task updated successfully', {
       taskId: updatedTask.id,
       status: updatedTask.status,
     });
@@ -450,14 +358,15 @@ export class WebCrawlTaskManagerService implements IWebCrawlTaskManagerPort {
 
     logger.debug('Getting web crawl task statistics');
 
-    const [total, newCount, completedCount, errorCount] = await Promise.all([
-      this.webCrawlTaskRepository.countAllWebCrawlTasks(),
+    const [newCount, completedCount, errorCount] = await Promise.all([
       this.webCrawlTaskRepository.countWebCrawlTasksByStatus(TaskStatus.NEW),
       this.webCrawlTaskRepository.countWebCrawlTasksByStatus(
         TaskStatus.COMPLETED
       ),
       this.webCrawlTaskRepository.countWebCrawlTasksByStatus(TaskStatus.ERROR),
     ]);
+
+    const total = newCount + completedCount + errorCount;
 
     const statistics = {
       total,

@@ -3,7 +3,7 @@ import {
   WebCrawlMetrics,
   MetricsQueryParams,
 } from '../../../domain/types/metrics.types';
-import { metricsConfig } from '../../../config/metrics';
+import { restConfig } from '../../../config/rest';
 import { trace } from '@opentelemetry/api';
 
 /**
@@ -41,7 +41,7 @@ export class WebCrawlMetricsService {
    */
   async getMetrics(params?: MetricsQueryParams): Promise<WebCrawlMetrics> {
     const activeSpan = trace.getActiveSpan();
-    const hours = params?.hours || metricsConfig.defaultTimeRangeHours;
+    const hours = params?.hours || restConfig.metricsUi.defaultTimeRangeHours;
 
     // Add business attributes to active span
     if (activeSpan) {
@@ -103,7 +103,7 @@ export class WebCrawlMetricsService {
   async getPrometheusFormat(params?: MetricsQueryParams): Promise<string> {
     const activeSpan = trace.getActiveSpan();
     const metrics = await this.getMetrics(params);
-    const hours = params?.hours || metricsConfig.defaultTimeRangeHours;
+    const hours = params?.hours || restConfig.metricsUi.defaultTimeRangeHours;
 
     // Add business attributes to active span
     if (activeSpan) {
@@ -180,7 +180,7 @@ web_crawl_metrics_timestamp{time_range="${hours}h"} ${Math.floor(
    */
   async getNewTasksCount(params?: MetricsQueryParams): Promise<number> {
     const activeSpan = trace.getActiveSpan();
-    const hours = params?.hours || metricsConfig.defaultTimeRangeHours;
+    const hours = params?.hours || restConfig.metricsUi.defaultTimeRangeHours;
 
     // Add business attributes to active span
     if (activeSpan) {
@@ -228,7 +228,7 @@ web_crawl_metrics_timestamp{time_range="${hours}h"} ${Math.floor(
    */
   async getCompletedTasksCount(params?: MetricsQueryParams): Promise<number> {
     const activeSpan = trace.getActiveSpan();
-    const hours = params?.hours || metricsConfig.defaultTimeRangeHours;
+    const hours = params?.hours || restConfig.metricsUi.defaultTimeRangeHours;
 
     // Add business attributes to active span
     if (activeSpan) {
@@ -276,7 +276,7 @@ web_crawl_metrics_timestamp{time_range="${hours}h"} ${Math.floor(
    */
   async getErrorTasksCount(params?: MetricsQueryParams): Promise<number> {
     const activeSpan = trace.getActiveSpan();
-    const hours = params?.hours || metricsConfig.defaultTimeRangeHours;
+    const hours = params?.hours || restConfig.metricsUi.defaultTimeRangeHours;
 
     // Add business attributes to active span
     if (activeSpan) {
@@ -326,7 +326,7 @@ web_crawl_metrics_timestamp{time_range="${hours}h"} ${Math.floor(
     params?: MetricsQueryParams
   ): Promise<number> {
     const activeSpan = trace.getActiveSpan();
-    const hours = params?.hours || metricsConfig.defaultTimeRangeHours;
+    const hours = params?.hours || restConfig.metricsUi.defaultTimeRangeHours;
 
     // Add business attributes to active span
     if (activeSpan) {
@@ -373,7 +373,7 @@ web_crawl_metrics_timestamp{time_range="${hours}h"} ${Math.floor(
    * ```
    */
   getAvailableTimeRanges(): number[] {
-    return metricsConfig.availableTimeRanges;
+    return restConfig.metricsUi.availableTimeRanges;
   }
 
   /**
@@ -388,7 +388,7 @@ web_crawl_metrics_timestamp{time_range="${hours}h"} ${Math.floor(
    * ```
    */
   getDefaultTimeRange(): number {
-    return metricsConfig.defaultTimeRangeHours;
+    return restConfig.metricsUi.defaultTimeRangeHours;
   }
 
   /**
@@ -403,6 +403,6 @@ web_crawl_metrics_timestamp{time_range="${hours}h"} ${Math.floor(
    * ```
    */
   getRefreshInterval(): number {
-    return metricsConfig.refreshIntervalSeconds;
+    return restConfig.metricsUi.refreshIntervalSeconds;
   }
 }

@@ -76,8 +76,7 @@ describe('HealthCheckService', () => {
       });
       expect(mockClient.release).toHaveBeenCalled();
       expect(mockLogger.debug).toHaveBeenCalledWith(
-        'Database health check completed successfully',
-        expect.any(Object)
+        'Checking database health...'
       );
     });
 
@@ -145,8 +144,7 @@ describe('HealthCheckService', () => {
       expect(mockKafkaClientInstance.fetchClusterMetadata).toHaveBeenCalled();
       expect(mockKafkaClientInstance.getConnectionStatus).toHaveBeenCalled();
       expect(mockLogger.debug).toHaveBeenCalledWith(
-        'Kafka health check completed successfully',
-        expect.any(Object)
+        'Checking Kafka health...'
       );
     });
 
@@ -199,8 +197,7 @@ describe('HealthCheckService', () => {
         pid: process.pid,
       });
       expect(mockLogger.debug).toHaveBeenCalledWith(
-        'Service health check completed successfully',
-        expect.any(Object)
+        'Checking service health...'
       );
     });
 
@@ -258,8 +255,7 @@ describe('HealthCheckService', () => {
       expect(result.checks.kafka.status).toBe('up');
       expect(result.checks.service.status).toBe('up');
       expect(mockLogger.info).toHaveBeenCalledWith(
-        'System health check completed',
-        expect.any(Object)
+        'Performing system health check'
       );
     });
 

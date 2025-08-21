@@ -58,20 +58,7 @@ export interface IWebCrawlTaskManagerPort {
    */
   getWebCrawlTasksByStatus(status: TaskStatus): Promise<WebCrawlTask[]>;
 
-  /**
-   * Retrieves web crawl tasks by user email.
-   *
-   * @param userEmail - The user email to filter by
-   * @returns Array of tasks for the specified user
-   */
-  getWebCrawlTasksByUserEmail(userEmail: string): Promise<WebCrawlTask[]>;
 
-  /**
-   * Retrieves all web crawl tasks.
-   *
-   * @returns Array of all tasks
-   */
-  getAllWebCrawlTasks(): Promise<WebCrawlTask[]>;
 
   /**
    * Gets web crawl task statistics by status.

@@ -60,12 +60,10 @@ describe('WebCrawlTaskManagerService', () => {
       );
 
       expect(mockRepository.createWebCrawlTask).toHaveBeenCalledWith(
-        expect.objectContaining({
-          userEmail,
-          userQuery,
-          originalUrl,
-          status: TaskStatus.NEW,
-        })
+        userEmail,
+        userQuery,
+        originalUrl,
+        expect.any(Date)
       );
       expect(result).toBe(mockTask);
     });

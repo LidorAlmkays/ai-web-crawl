@@ -6,8 +6,6 @@ export type { WebCrawlNewTaskHeaderDtoType } from './headers/web-crawl-new-task-
 export type { WebCrawlTaskUpdateHeaderDtoType } from './headers/web-crawl-task-update-header.dto';
 
 // Messages
-export { BaseWebCrawlMessageDto } from './messages/base-web-crawl-message.dto';
-export type { BaseWebCrawlMessageDtoType } from './messages/base-web-crawl-message.dto';
 export { WebCrawlNewTaskMessageDto } from './messages/web-crawl-new-task-message.dto';
 export type { WebCrawlNewTaskMessageDtoType } from './messages/web-crawl-new-task-message.dto';
 export { WebCrawlCompletedTaskMessageDto } from './messages/web-crawl-completed-task-message.dto';

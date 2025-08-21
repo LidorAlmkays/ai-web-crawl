@@ -13,7 +13,7 @@ import { z } from 'zod';
  *
  * The schema includes configuration for:
  * - Connection parameters (brokers, client ID, group ID)
- * - Topic configuration (task status topic)
+ * - Topic configuration (task status, web crawl request)
  * - Security settings (SSL, SASL authentication)
  * - Connection timeouts and intervals
  * - Retry configuration
@@ -25,6 +25,7 @@ const kafkaConfigSchema = z.object({
   KAFKA_GROUP_ID: z.string().default('task-manager-group'),
   // Topic environment variables (env-driven topics dictionary)
   TASK_STATUS_TOPIC: z.string().default('task-status'),
+  WEB_CRAWL_REQUEST_TOPIC: z.string().default('requests-web-crawl'),
 
   // Optional environment variables with defaults
   KAFKA_SSL_ENABLED: z.coerce.boolean().default(false),
@@ -78,9 +79,10 @@ export const kafkaConfig = {
   clientId: config.KAFKA_CLIENT_ID,
   groupId: config.KAFKA_GROUP_ID,
 
-  // Topic configuration - single topic for all messages
+  // Topic configuration
   topics: {
     taskStatus: config.TASK_STATUS_TOPIC,
+    webCrawlRequest: config.WEB_CRAWL_REQUEST_TOPIC,
   },
 
   // SSL configuration

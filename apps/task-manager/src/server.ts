@@ -16,7 +16,7 @@ const { initOpenTelemetry } = require('./common/utils/otel-init');
 initOpenTelemetry();
 
 import { TaskManagerApplication } from './app';
-import { logger, initializeLogger } from './common/utils/logger';
+import { logger } from './common/utils/logger';
 
 /**
  * Bootstrap function that initializes and starts the Task Manager application
@@ -51,8 +51,7 @@ async function bootstrap() {
   };
 
   // OTEL is already initialized at the top of this file
-  // Initialize logger after OTEL
-  await initializeLogger();
+  // Logger is now a simple singleton, no initialization needed
 
   // Restore console methods if needed
   Object.assign(console, originalConsole);
@@ -60,7 +59,7 @@ async function bootstrap() {
   const app = new TaskManagerApplication();
   try {
     await app.start();
-    logger.debug('Task Manager application started successfully');
+    logger.info('Task Manager application started');
   } catch (error) {
     logger.error('Failed to bootstrap Task Manager application', {
       error: error instanceof Error ? error.message : String(error),

@@ -98,7 +98,7 @@ export class KafkaClient {
       this.isConnected = true;
 
       // Log important event (Kafka connection) at INFO level
-      logger.debug('Kafka connected successfully');
+      // Remove: 'Kafka connected successfully' - let Kafka client handle its own log
     } catch (error) {
       logger.error('Failed to connect to Kafka', { error });
       throw error;
@@ -190,7 +190,7 @@ export class KafkaClient {
       try {
         await admin.disconnect();
       } catch (e) {
-        logger.warn('Failed to disconnect Kafka admin client cleanly');
+        logger.error('Failed to disconnect Kafka admin client cleanly');
       }
     }
   }
@@ -247,7 +247,7 @@ export class KafkaClient {
    */
   async startConsuming(): Promise<void> {
     if (this.isRunning) {
-      logger.warn('Consumer is already running');
+      logger.error('Consumer is already running');
       return;
     }
 
@@ -262,7 +262,7 @@ export class KafkaClient {
             const handler = this.messageHandlers.get(topic);
 
             if (!handler) {
-              logger.warn(`No handler found for topic: ${topic}`);
+              logger.error(`No handler found for topic: ${topic}`);
               return;
             }
 

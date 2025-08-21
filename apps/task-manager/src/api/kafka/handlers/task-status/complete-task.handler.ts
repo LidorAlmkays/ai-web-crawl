@@ -27,15 +27,15 @@ export class CompleteTaskHandler extends BaseHandler {
         try {
           // Extract headers
           const headers = this.extractHeaders(message.message.headers);
-          const { id } = headers;
+          const { task_id } = headers;
 
-          if (!id) {
+          if (!task_id) {
             throw new Error('Task ID is required in message headers');
           }
 
           // Add business event for header extraction
           this.addBusinessEvent('headers_extracted', {
-            taskId: id,
+            taskId: task_id,
             processingId,
           });
 
@@ -66,7 +66,7 @@ export class CompleteTaskHandler extends BaseHandler {
 
           // Add business event for validation
           this.addBusinessEvent('body_validated', {
-            taskId: id,
+            taskId: task_id,
             processingId,
             'validation.duration': Date.now(),
           });
@@ -75,7 +75,7 @@ export class CompleteTaskHandler extends BaseHandler {
           this.addBusinessAttributes({
             'business.operation': 'complete_task',
             'business.entity': 'web_crawl_task',
-            'task.id': id,
+            'task.id': task_id,
             'task.status': TaskStatus.COMPLETED,
             'crawl.result.size': validatedData.crawl_result?.length || 0,
           });
@@ -83,14 +83,24 @@ export class CompleteTaskHandler extends BaseHandler {
           // Update the task status to completed
           const updatedTask =
             await this.webCrawlTaskManager.updateWebCrawlTaskStatus(
-              id,
+              task_id,
               TaskStatus.COMPLETED,
               validatedData.crawl_result
             );
 
           if (!updatedTask) {
-            throw new Error(`Task not found: ${id}`);
+            throw new Error(`Task not found: ${task_id}`);
           }
+
+          // Log received data for task completion
+          logger.info('Task completion update received', {
+            taskId: task_id,
+            status: TaskStatus.COMPLETED,
+            crawlResultSize: validatedData.crawl_result?.length || 0,
+            messageTimestamp: headers.timestamp,
+            traceId: this.getCurrentTraceContext()?.traceId,
+            spanId: this.getCurrentTraceContext()?.spanId,
+          });
 
           // Add business event for task completion
           this.addBusinessEvent('task_completed', {
@@ -106,13 +116,7 @@ export class CompleteTaskHandler extends BaseHandler {
             processingId,
             updatedTask
           );
-          logger.info(`Web-crawl task completed: ${updatedTask.id}`, {
-            processingId,
-            taskId: updatedTask.id,
-            userEmail: updatedTask.userEmail,
-            status: updatedTask.status,
-            processingStage: 'TASK_COMPLETION_SUCCESS',
-          });
+          // Task completion successful - no need to log success
           // done
         } catch (error) {
           // Add error attributes to active span

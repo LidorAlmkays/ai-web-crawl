@@ -1,5 +1,14 @@
 import { EachMessagePayload } from 'kafkajs';
-import { ILogger } from '../../../common/utils/logging/interfaces';
+
+// Simple logger interface for backward compatibility
+interface ILogger {
+  debug(message: string, info?: Record<string, any>): void;
+  info(message: string, info?: Record<string, any>): void;
+  warn(message: string, info?: Record<string, any>): void;
+  error(message: string, info?: Record<string, any>): void;
+  success(message: string, info?: Record<string, any>): void;
+  child(additionalContext: Record<string, any>): ILogger;
+}
 
 /**
  * Base interface for message handlers

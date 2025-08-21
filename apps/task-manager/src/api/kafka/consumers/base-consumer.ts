@@ -154,11 +154,7 @@ export abstract class BaseConsumer implements IConsumer {
       // Process message (kafkajs instrumentation creates consumer span and propagates context)
       await handler.process(message, logger);
 
-      // Log message processed successfully
-      logger.info('Kafka message processed successfully', {
-        topic: this.topic,
-        key: message.key?.toString(),
-      });
+
     } catch (error) {
       // Log error with automatic trace context
       logger.error('Kafka message processing failed', {

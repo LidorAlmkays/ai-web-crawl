@@ -1,5 +1,5 @@
 import { KafkaClient } from '../../../../common/clients/kafka-client';
-import { kafkaTopicConfig } from '../../../../config';
+import { kafkaConfig } from '../../../../config';
 import { WebCrawlRequestMessageDto } from '../dtos/web-crawl-request.dto';
 import { logger } from '../../../../common/utils/logger';
 import { validateDto } from '../../../../common/utils/validation';
@@ -29,15 +29,13 @@ export class WebCrawlRequestPublisher {
 
   constructor() {
     this.kafkaClient = KafkaClient.getInstance();
-    this.topicName = kafkaTopicConfig.webCrawlRequest;
+    this.topicName = kafkaConfig.topics.webCrawlRequest;
   }
 
   /**
    * Publish web crawl request message
    */
   async publish(message: WebCrawlRequestMessageDto, options: PublishOptions = {}): Promise<PublishResult> {
-    const startTime = Date.now();
-
     try {
       // Validate message before publishing
       const validation = await validateDto(WebCrawlRequestMessageDto, message);
@@ -65,17 +63,12 @@ export class WebCrawlRequestPublisher {
         acks: options.acks || 1, // Wait for leader acknowledgment
       });
 
-      const duration = Date.now() - startTime;
-
-      logger.debug('Web crawl request published successfully', {
-        taskId: message.headers.task_id,
+      // Success log (application layer): message sent to Kafka
+      logger.info('Web crawl request published to Kafka', {
         topic: this.topicName,
+        taskId: message.headers.task_id,
         partition: result[0]?.partition,
-        offset: result[0]?.offset,
-        messageId: result[0]?.baseOffset?.toString(),
-        duration,
-        userEmail: message.body.user_email,
-        baseUrl: message.body.base_url,
+        offset: typeof result[0]?.offset === 'number' ? result[0].offset : 0,
       });
 
       return {
@@ -86,14 +79,13 @@ export class WebCrawlRequestPublisher {
         offset: typeof result[0]?.offset === 'number' ? result[0].offset : 0,
       };
     } catch (error) {
-      const duration = Date.now() - startTime;
+
       const errorMessage = error instanceof Error ? error.message : String(error);
 
       logger.error('Failed to publish web crawl request', {
         error: errorMessage,
         taskId: message.headers.task_id,
         topic: this.topicName,
-        duration,
         userEmail: message.body.user_email,
         baseUrl: message.body.base_url,
         stack: error instanceof Error ? error.stack : undefined,

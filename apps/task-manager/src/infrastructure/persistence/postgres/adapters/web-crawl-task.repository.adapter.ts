@@ -63,39 +63,45 @@ export class WebCrawlTaskRepositoryAdapter implements IWebCrawlTaskRepositoryPor
         });
       }
 
-      const query = `
-        INSERT INTO web_crawl_tasks (user_email, user_query, original_url, status, received_at, created_at, updated_at)
-        VALUES ($1, $2, $3, $4, $5, $6, $7)
-        RETURNING *
-      `;
+      // Use stored procedure to create web crawl task
+      const query = 'SELECT create_web_crawl_task($1, $2, $3, $4, $5, $6, $7) as id';
 
       const values = [
         userEmail,
         userQuery,
         originalUrl,
-        TaskStatus.NEW,
         receivedAt,
+        TaskStatus.NEW,
         new Date(),
         new Date(),
       ];
 
       const result = await client.query(query, values);
-      const createdTask = this.mapRowToEntity(result.rows[0]);
+      const taskId = result.rows[0].id;
+      
+      // Construct the task entity directly from the data we already have
+      const now = new Date();
+      const createdTask = new WebCrawlTask(
+        taskId,
+        userEmail,
+        userQuery,
+        originalUrl,
+        receivedAt,
+        TaskStatus.NEW,
+        now,  // created_at
+        now   // updated_at
+      );
 
       // Add business event for successful database operation
       if (activeSpan) {
         activeSpan.addEvent('business.database_query_successful', {
           operation: 'INSERT',
           table: 'web_crawl_tasks',
-          taskId: createdTask.id,
+          taskId: taskId,
         });
       }
 
-      logger.debug('Web crawl task created successfully', {
-        taskId: createdTask.id,
-        userEmail: createdTask.userEmail,
-        status: createdTask.status,
-      });
+
 
       return createdTask;
     } catch (error) {
@@ -114,7 +120,7 @@ export class WebCrawlTaskRepositoryAdapter implements IWebCrawlTaskRepositoryPor
         userEmail,
       });
 
-      throw error;
+          throw error;
     } finally {
       client.release();
     }
@@ -131,7 +137,7 @@ export class WebCrawlTaskRepositoryAdapter implements IWebCrawlTaskRepositoryPor
     const client = await pool.connect();
 
     try {
-      const query = 'SELECT * FROM web_crawl_tasks WHERE id = $1';
+      const query = 'SELECT * FROM find_web_crawl_task_by_id($1)';
       const result = await client.query(query, [taskId]);
 
       if (result.rows.length === 0) {
@@ -150,31 +156,7 @@ export class WebCrawlTaskRepositoryAdapter implements IWebCrawlTaskRepositoryPor
     }
   }
 
-  /**
-   * Finds all web crawl tasks for a specific user
-   *
-   * @param userEmail - Email address of the user whose tasks to find
-   * @returns Promise resolving to an array of WebCrawlTask entities
-   */
-  async findWebCrawlTasksByUserEmail(userEmail: string): Promise<WebCrawlTask[]> {
-    const pool = this.postgresFactory.getPool();
-    const client = await pool.connect();
 
-    try {
-      const query = 'SELECT * FROM web_crawl_tasks WHERE user_email = $1 ORDER BY received_at DESC';
-      const result = await client.query(query, [userEmail]);
-
-      return result.rows.map((row) => this.mapRowToEntity(row));
-    } catch (error) {
-      logger.error('Failed to find web crawl tasks by user email', {
-        error: error instanceof Error ? error.message : String(error),
-        userEmail,
-      });
-      throw error;
-    } finally {
-      client.release();
-    }
-  }
 
   /**
    * Finds all web crawl tasks with a specific status
@@ -187,7 +169,7 @@ export class WebCrawlTaskRepositoryAdapter implements IWebCrawlTaskRepositoryPor
     const client = await pool.connect();
 
     try {
-      const query = 'SELECT * FROM web_crawl_tasks WHERE status = $1 ORDER BY received_at DESC';
+      const query = 'SELECT * FROM find_web_crawl_tasks_by_status($1)';
       const result = await client.query(query, [status]);
 
       return result.rows.map((row) => this.mapRowToEntity(row));
@@ -202,29 +184,7 @@ export class WebCrawlTaskRepositoryAdapter implements IWebCrawlTaskRepositoryPor
     }
   }
 
-  /**
-   * Finds all web crawl tasks in the system
-   *
-   * @returns Promise resolving to an array of all WebCrawlTask entities
-   */
-  async findAllWebCrawlTasks(): Promise<WebCrawlTask[]> {
-    const pool = this.postgresFactory.getPool();
-    const client = await pool.connect();
 
-    try {
-      const query = 'SELECT * FROM web_crawl_tasks ORDER BY received_at DESC';
-      const result = await client.query(query);
-
-      return result.rows.map((row) => this.mapRowToEntity(row));
-    } catch (error) {
-      logger.error('Failed to find all web crawl tasks', {
-        error: error instanceof Error ? error.message : String(error),
-      });
-      throw error;
-    } finally {
-      client.release();
-    }
-  }
 
   /**
    * Updates an existing web crawl task in the database
@@ -238,35 +198,21 @@ export class WebCrawlTaskRepositoryAdapter implements IWebCrawlTaskRepositoryPor
     const client = await pool.connect();
 
     try {
-      const query = `
-        UPDATE web_crawl_tasks 
-        SET status = $1, result = $2, updated_at = $3, finished_at = $4
-        WHERE id = $5
-        RETURNING *
-      `;
-
+      // Use stored procedure to update web crawl task
+      const query = 'SELECT update_web_crawl_task($1, $2, $3, $4, $5)';
+      
       const values = [
+        task.id,
         task.status,
         task.result,
-        new Date(),
         task.finishedAt,
-        task.id,
+        new Date(),
       ];
 
-      const result = await client.query(query, values);
+      await client.query(query, values);
 
-      if (result.rows.length === 0) {
-        throw new Error(`Task not found: ${task.id}`);
-      }
-
-      const updatedTask = this.mapRowToEntity(result.rows[0]);
-
-      logger.debug('Web crawl task updated successfully', {
-        taskId: updatedTask.id,
-        status: updatedTask.status,
-      });
-
-      return updatedTask;
+      // Return the updated task entity directly (we already have all the data)
+      return task;
     } catch (error) {
       logger.error('Failed to update web crawl task', {
         error: error instanceof Error ? error.message : String(error),
@@ -279,29 +225,7 @@ export class WebCrawlTaskRepositoryAdapter implements IWebCrawlTaskRepositoryPor
     }
   }
 
-  /**
-   * Counts all web crawl tasks in the system
-   *
-   * @returns Promise resolving to the total count of tasks
-   */
-  async countAllWebCrawlTasks(): Promise<number> {
-    const pool = this.postgresFactory.getPool();
-    const client = await pool.connect();
 
-    try {
-      const query = 'SELECT COUNT(*) as count FROM web_crawl_tasks';
-      const result = await client.query(query);
-
-      return parseInt(result.rows[0].count, 10);
-    } catch (error) {
-      logger.error('Failed to count all web crawl tasks', {
-        error: error instanceof Error ? error.message : String(error),
-      });
-      throw error;
-    } finally {
-      client.release();
-    }
-  }
 
   /**
    * Counts web crawl tasks with a specific status
@@ -314,10 +238,10 @@ export class WebCrawlTaskRepositoryAdapter implements IWebCrawlTaskRepositoryPor
     const client = await pool.connect();
 
     try {
-      const query = 'SELECT COUNT(*) as count FROM web_crawl_tasks WHERE status = $1';
+      const query = 'SELECT count_web_crawl_tasks_by_status($1) as count';
       const result = await client.query(query, [status]);
 
-      return parseInt(result.rows[0].count, 10);
+      return result.rows[0].count;
     } catch (error) {
       logger.error('Failed to count web crawl tasks by status', {
         error: error instanceof Error ? error.message : String(error),

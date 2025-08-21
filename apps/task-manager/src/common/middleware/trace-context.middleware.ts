@@ -19,7 +19,7 @@ export function traceContextMiddleware(
 ): void {
   try {
     // Log request (express auto-instrumentation will create/propagate span)
-    logger.debug('HTTP request received', {
+    logger.info('HTTP request received', {
       method: req.method,
       path: req.path,
       ip: req.ip,
@@ -28,7 +28,7 @@ export function traceContextMiddleware(
     next();
   } catch (error) {
     // Fallback to regular logger if trace context setup fails
-    logger.warn('Failed to setup trace context for HTTP request', {
+    logger.error('Failed to setup trace context for HTTP request', {
       error: error instanceof Error ? error.message : String(error),
       method: req.method,
       path: req.path,

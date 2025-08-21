@@ -82,14 +82,15 @@ export class NewTaskHandler extends BaseHandler {
           'validation.duration': Date.now(),
         });
 
-        // Log processing start with trace context
-        logger.info('Processing new task creation', {
-          processingId,
+        // Log received data for new task creation
+        logger.info('New task creation received', {
           userEmail: validatedData.user_email,
           userQuery: validatedData.user_query,
           baseUrl: validatedData.base_url,
           status: headers.status,
           messageTimestamp: headers.timestamp,
+          traceId: traceContext?.traceId,
+          spanId: traceContext?.spanId,
         });
 
         // Add business attributes on active span
@@ -117,18 +118,7 @@ export class NewTaskHandler extends BaseHandler {
           spanId: traceContext?.spanId,
         });
 
-        // Log the task creation success with the exact message format
-        logger.info(`Task ${createdTask.id} has been created`, {
-          taskId: createdTask.id,
-          userEmail: createdTask.userEmail,
-          status: createdTask.status,
-          processingStage: 'TASK_CREATION_SUCCESS',
-          // Include trace context for incoming message
-          ...(traceContext && {
-            traceId: traceContext.traceId,
-            spanId: traceContext.spanId,
-          }),
-        });
+        // Task creation successful - no need to log success
 
         // Publish web crawl request (auto-instrumentation will inject W3C context)
         await this.publishWebCrawlRequest(createdTask);
@@ -180,16 +170,7 @@ export class NewTaskHandler extends BaseHandler {
         throw new Error(`Failed to publish web crawl request: ${publishResult.error}`);
       }
 
-      logger.info('Web crawl request published successfully', {
-        taskId: task.id,
-        messageId: publishResult.messageId,
-        topic: publishResult.topic,
-        // Include current trace context
-        ...(this.getCurrentTraceContext() && {
-          traceId: this.getCurrentTraceContext()!.traceId,
-          spanId: this.getCurrentTraceContext()!.spanId,
-        }),
-      });
+
     } catch (error) {
       logger.error('Failed to publish web crawl request', {
         taskId: task.id,

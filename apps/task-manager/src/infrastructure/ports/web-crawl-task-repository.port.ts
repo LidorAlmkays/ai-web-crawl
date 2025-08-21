@@ -93,43 +93,9 @@ export interface IWebCrawlTaskRepositoryPort {
    */
   findWebCrawlTasksByStatus(status: string): Promise<WebCrawlTask[]>;
 
-  /**
-   * Finds web crawl tasks by user email
-   *
-   * This method queries the underlying data store to find all tasks
-   * associated with a specific user email address.
-   *
-   * @param userEmail - The user email to filter by
-   * @returns Promise resolving to an array of tasks for the specified user
-   *
-   * @example
-   * ```typescript
-   * const userTasks = await repository.findWebCrawlTasksByUserEmail('user@example.com');
-   * console.log(`User has ${userTasks.length} tasks`);
-   * ```
-   */
-  findWebCrawlTasksByUserEmail(userEmail: string): Promise<WebCrawlTask[]>;
 
-  /**
-   * Finds all web crawl tasks with optional pagination
-   *
-   * This method queries the underlying data store to retrieve all tasks,
-   * with optional pagination support for large datasets.
-   *
-   * @param limit - Maximum number of tasks to return (optional)
-   * @param offset - Number of tasks to skip for pagination (optional)
-   * @returns Promise resolving to an array of tasks with pagination
-   *
-   * @example
-   * ```typescript
-   * const allTasks = await repository.findAllWebCrawlTasks(50, 0);
-   * console.log(`Retrieved ${allTasks.length} tasks`);
-   * ```
-   */
-  findAllWebCrawlTasks(
-    limit?: number,
-    offset?: number
-  ): Promise<WebCrawlTask[]>;
+
+
 
   /**
    * Counts web crawl tasks by status
@@ -148,19 +114,5 @@ export interface IWebCrawlTaskRepositoryPort {
    */
   countWebCrawlTasksByStatus(status: string): Promise<number>;
 
-  /**
-   * Counts total number of web crawl tasks
-   *
-   * This method queries the underlying data store to count the total
-   * number of tasks, useful for system statistics and monitoring.
-   *
-   * @returns Promise resolving to the total number of web crawl tasks in the database
-   *
-   * @example
-   * ```typescript
-   * const totalCount = await repository.countAllWebCrawlTasks();
-   * console.log(`Total tasks in system: ${totalCount}`);
-   * ```
-   */
-  countAllWebCrawlTasks(): Promise<number>;
+
 }

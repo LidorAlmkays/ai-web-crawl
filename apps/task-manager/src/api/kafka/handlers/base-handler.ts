@@ -82,21 +82,22 @@ export abstract class BaseHandler implements IHandler {
   ): string {
     const processingId = this.generateProcessingId();
     
-    // Extract trace context from headers for logging
-    const traceContext = this.extractTraceContextFromHeaders(
-      message.message.headers as Record<string, Buffer | undefined> || {}
-    );
+    // Extract trace context from headers for logging (kept for potential future use)
+    // const traceContext = this.extractTraceContextFromHeaders(
+    //   message.message.headers as Record<string, Buffer | undefined> || {}
+    // );
     
-    logger.info(`Starting ${handlerName} processing`, {
-      processingId,
-      topic: message.topic,
-      partition: message.partition,
-      offset: message.message.offset,
-      timestamp: message.message.timestamp,
-      traceId: traceContext?.traceId,
-      spanId: traceContext?.spanId,
-      parentId: traceContext?.parentId,
-    });
+    // Don't log processing start - this will be handled by specific handlers
+    // logger.info(`Starting ${handlerName} processing`, {
+    //   processingId,
+    //   topic: message.topic,
+    //   partition: message.partition,
+    //   offset: message.message.offset,
+    //   timestamp: message.message.timestamp,
+    //   traceId: traceContext?.traceId,
+    //   spanId: traceContext?.spanId,
+    //   parentId: traceContext?.parentId,
+    // });
 
     return processingId;
   }
@@ -115,21 +116,7 @@ export abstract class BaseHandler implements IHandler {
     processingId: string,
     result?: any
   ): void {
-    // Get current trace context from active span
-    const currentTraceContext = this.getCurrentTraceContext();
-    
-    logger.debug(`Completed ${handlerName} processing successfully`, {
-      processingId,
-      topic: message.topic,
-      partition: message.partition,
-      offset: message.message.offset,
-      result: result ? JSON.stringify(result) : undefined,
-      // Include current trace context
-      ...(currentTraceContext && {
-        traceId: currentTraceContext.traceId,
-        spanId: currentTraceContext.spanId,
-      }),
-    });
+    // Remove: 'Completed processing successfully' - no need to log successful completion
   }
 
   /**
@@ -254,7 +241,7 @@ export abstract class BaseHandler implements IHandler {
     // Parse the traceparent header
     const parsed = parseTraceparent(traceparent);
     if (!parsed) {
-      logger.warn('Invalid traceparent header format', { traceparent });
+      logger.error('Invalid traceparent header format', { traceparent });
       return null;
     }
 
@@ -279,12 +266,7 @@ export abstract class BaseHandler implements IHandler {
       'trace.flags': parsed.traceFlags,
     });
 
-    logger.debug('Extracted trace context from headers', {
-      traceId,
-      spanId: currentSpanId,
-      parentId: parsed.parentId,
-      traceFlags: parsed.traceFlags,
-    });
+
 
     return traceContext;
   }

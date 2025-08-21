@@ -135,7 +135,7 @@ export function createRestRouter(
 
   // Add 404 handler
   router.use('*', (req, res) => {
-    logger.debug('REST API 404', { method: req.method, path: req.path });
+    logger.error('REST API 404', { method: req.method, path: req.path });
 
     res.status(404).json({
       error: 'Endpoint not found',

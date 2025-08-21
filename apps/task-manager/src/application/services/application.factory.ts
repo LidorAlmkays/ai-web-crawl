@@ -1,5 +1,14 @@
-import { ILogger } from '../../common/utils/logging/interfaces';
 import { logger } from '../../common/utils/logger';
+
+// Simple logger interface for backward compatibility
+interface ILogger {
+  debug(message: string, info?: Record<string, any>): void;
+  info(message: string, info?: Record<string, any>): void;
+  warn(message: string, info?: Record<string, any>): void;
+  error(message: string, info?: Record<string, any>): void;
+  success(message: string, info?: Record<string, any>): void;
+  child(additionalContext: Record<string, any>): ILogger;
+}
 import { IWebCrawlTaskManagerPort } from '../ports/web-crawl-task-manager.port';
 import { WebCrawlTaskManagerService } from './web-crawl-task-manager.service';
 import { IWebCrawlTaskRepositoryPort } from '../../infrastructure/ports/web-crawl-task-repository.port';
@@ -44,7 +53,7 @@ export class ApplicationFactory {
     const taskRepository = this.createTaskRepository();
     const service = new WebCrawlTaskManagerService(taskRepository);
 
-    this.logger.debug('Web crawl task manager service created successfully');
+    // Remove: 'Web crawl task manager service created successfully' - no need to log successful creation
     return service;
   }
 
@@ -57,7 +66,7 @@ export class ApplicationFactory {
     const metricsDataPort = this.createMetricsDataPort();
     const service = new WebCrawlMetricsService(metricsDataPort);
 
-    this.logger.debug('Web crawl metrics service created successfully');
+    // Remove: 'Web crawl metrics service created successfully' - no need to log successful creation
     return service;
   }
 
@@ -71,7 +80,7 @@ export class ApplicationFactory {
     const webCrawlPublisher = this.createWebCrawlRequestPublisher();
     const handler = new NewTaskHandler(taskManagerService, webCrawlPublisher);
 
-    this.logger.debug('New task handler created successfully');
+    // Remove: 'New task handler created successfully' - no need to log successful creation
     return handler;
   }
 
@@ -84,7 +93,7 @@ export class ApplicationFactory {
     const taskManagerService = this.createWebCrawlTaskManagerService();
     const router = new TaskStatusRouterHandler(taskManagerService);
 
-    this.logger.debug('Task status router handler created successfully');
+    // Remove: 'Task status router handler created successfully' - no need to log successful creation
     return router;
   }
 
@@ -96,7 +105,7 @@ export class ApplicationFactory {
 
     const adapter = new WebCrawlTaskRepositoryAdapter(this.postgresFactory);
 
-    this.logger.debug('Task repository adapter created successfully');
+    // Remove: 'Task repository adapter created successfully' - no need to log successful creation
     return adapter;
   }
 
@@ -108,7 +117,7 @@ export class ApplicationFactory {
 
     const adapter = new WebCrawlMetricsAdapter(this.postgresFactory.getPool());
 
-    this.logger.debug('Metrics data port created successfully');
+    // Remove: 'Metrics data port created successfully' - no need to log successful creation
     return adapter;
   }
 
@@ -120,7 +129,7 @@ export class ApplicationFactory {
 
     const publisher = new WebCrawlRequestPublisher();
 
-    this.logger.debug('Web crawl request publisher created successfully');
+    // Remove: 'Web crawl request publisher created successfully' - no need to log successful creation
     return publisher;
   }
 

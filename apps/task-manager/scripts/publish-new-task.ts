@@ -16,7 +16,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { trace } from '@opentelemetry/api';
 
 // Config and enums from the app (reuse existing configuration and types)
-import { kafkaConfig, kafkaTopicConfig } from '../src/config';
+import { kafkaConfig } from '../src/config';
 import { TaskStatus } from '../src/common/enums/task-status.enum';
 import { TaskType } from '../src/common/enums/task-type.enum';
 import { initOpenTelemetry } from '../src/common/utils/otel-init';
@@ -91,7 +91,7 @@ async function main(): Promise<void> {
   });
 
   const producer = kafka.producer();
-  const topic = kafkaTopicConfig.taskStatus;
+  const topic = kafkaConfig.topics.taskStatus;
 
   // Generate a unique message ID for the Kafka key
   const messageId = uuidv4();

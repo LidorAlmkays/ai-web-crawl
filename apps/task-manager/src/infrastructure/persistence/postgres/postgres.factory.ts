@@ -100,7 +100,7 @@ export class PostgresFactory {
       this.isInitialized = true;
 
       // Log important event (database connection) at INFO level
-      logger.debug('PostgreSQL connected successfully');
+      // Remove: 'PostgreSQL connected successfully' - let database handle its own log
     } catch (error) {
       logger.error('Failed to create PostgreSQL connection pool', {
         error: error instanceof Error ? error.message : String(error),
