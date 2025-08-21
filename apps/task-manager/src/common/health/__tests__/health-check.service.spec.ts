@@ -1,23 +1,22 @@
 import { HealthCheckService } from '../health-check.service';
 import { Pool } from 'pg';
-import { Kafka } from 'kafkajs';
+import { KafkaClient } from '../../clients/kafka-client';
 import { logger } from '../../utils/logger';
 
 // Mock dependencies
 jest.mock('../../utils/logger');
 jest.mock('pg');
-jest.mock('kafkajs');
+jest.mock('../../clients/kafka-client');
 
 const mockLogger = logger as jest.Mocked<typeof logger>;
 const mockPool = Pool as jest.MockedClass<typeof Pool>;
-const mockKafka = Kafka as jest.MockedClass<typeof Kafka>;
+const mockKafkaClient = KafkaClient as jest.MockedClass<typeof KafkaClient>;
 
 describe('HealthCheckService', () => {
   let healthCheckService: HealthCheckService;
   let mockPoolInstance: jest.Mocked<Pool>;
-  let mockKafkaInstance: jest.Mocked<Kafka>;
+  let mockKafkaClientInstance: jest.Mocked<KafkaClient>;
   let mockClient: any;
-  let mockAdmin: any;
 
   beforeEach(() => {
     // Reset mocks
@@ -36,28 +35,22 @@ describe('HealthCheckService', () => {
       release: jest.fn(),
     };
 
-    // Mock admin
-    mockAdmin = {
-      connect: jest.fn(),
-      disconnect: jest.fn(),
-      fetchTopicMetadata: jest.fn(),
-    };
-
-    // Mock Kafka instance
-    mockKafkaInstance = {
-      admin: jest.fn().mockReturnValue(mockAdmin),
+    // Mock KafkaClient instance
+    mockKafkaClientInstance = {
+      fetchClusterMetadata: jest.fn(),
+      getConnectionStatus: jest.fn(),
     } as any;
 
     // Setup pool mock
     mockPool.mockImplementation(() => mockPoolInstance);
 
-    // Setup Kafka mock
-    mockKafka.mockImplementation(() => mockKafkaInstance);
+    // Setup KafkaClient mock
+    mockKafkaClient.mockImplementation(() => mockKafkaClientInstance);
 
     // Create service instance
     healthCheckService = new HealthCheckService(
       mockPoolInstance,
-      mockKafkaInstance
+      mockKafkaClientInstance
     );
   });
 
@@ -83,8 +76,7 @@ describe('HealthCheckService', () => {
       });
       expect(mockClient.release).toHaveBeenCalled();
       expect(mockLogger.debug).toHaveBeenCalledWith(
-        'Database health check completed successfully',
-        expect.any(Object)
+        'Checking database health...'
       );
     });
 
@@ -130,13 +122,12 @@ describe('HealthCheckService', () => {
   describe('checkKafkaHealth', () => {
     it('should return healthy status when Kafka is accessible', async () => {
       // Arrange
-      mockAdmin.connect.mockResolvedValue(undefined);
-      mockAdmin.fetchTopicMetadata.mockResolvedValue({
-        topics: [{ topic: 'test-topic' }],
+      mockKafkaClientInstance.fetchClusterMetadata.mockResolvedValue({
+        topicsCount: 1,
         clusterId: 'test-cluster',
         controllerId: 1,
       });
-      mockAdmin.disconnect.mockResolvedValue(undefined);
+      mockKafkaClientInstance.getConnectionStatus.mockReturnValue(true);
 
       // Act
       const result = await healthCheckService.checkKafkaHealth();
@@ -148,19 +139,19 @@ describe('HealthCheckService', () => {
         topicsCount: 1,
         clusterId: 'test-cluster',
         controllerId: 1,
+        isConnected: true,
       });
-      expect(mockAdmin.connect).toHaveBeenCalled();
-      expect(mockAdmin.disconnect).toHaveBeenCalled();
+      expect(mockKafkaClientInstance.fetchClusterMetadata).toHaveBeenCalled();
+      expect(mockKafkaClientInstance.getConnectionStatus).toHaveBeenCalled();
       expect(mockLogger.debug).toHaveBeenCalledWith(
-        'Kafka health check completed successfully',
-        expect.any(Object)
+        'Checking Kafka health...'
       );
     });
 
     it('should return unhealthy status when Kafka connection fails', async () => {
       // Arrange
       const error = new Error('Kafka connection failed');
-      mockAdmin.connect.mockRejectedValue(error);
+      mockKafkaClientInstance.fetchClusterMetadata.mockRejectedValue(error);
 
       // Act
       const result = await healthCheckService.checkKafkaHealth();
@@ -206,8 +197,7 @@ describe('HealthCheckService', () => {
         pid: process.pid,
       });
       expect(mockLogger.debug).toHaveBeenCalledWith(
-        'Service health check completed successfully',
-        expect.any(Object)
+        'Checking service health...'
       );
     });
 
@@ -239,13 +229,12 @@ describe('HealthCheckService', () => {
         .mockResolvedValueOnce({ rows: [{ health_check: 1 }] })
         .mockResolvedValueOnce({ rows: [{ count: '5' }] });
 
-      mockAdmin.connect.mockResolvedValue(undefined);
-      mockAdmin.fetchTopicMetadata.mockResolvedValue({
-        topics: [{ topic: 'test-topic' }],
+      mockKafkaClientInstance.fetchClusterMetadata.mockResolvedValue({
+        topicsCount: 1,
         clusterId: 'test-cluster',
         controllerId: 1,
       });
-      mockAdmin.disconnect.mockResolvedValue(undefined);
+      mockKafkaClientInstance.getConnectionStatus.mockReturnValue(true);
 
       jest.spyOn(process, 'memoryUsage').mockReturnValue({
         rss: 1024 * 1024 * 100,
@@ -266,8 +255,7 @@ describe('HealthCheckService', () => {
       expect(result.checks.kafka.status).toBe('up');
       expect(result.checks.service.status).toBe('up');
       expect(mockLogger.info).toHaveBeenCalledWith(
-        'System health check completed',
-        expect.any(Object)
+        'Performing system health check'
       );
     });
 
@@ -275,13 +263,12 @@ describe('HealthCheckService', () => {
       // Arrange
       mockPoolInstance.connect.mockRejectedValue(new Error('DB down'));
 
-      mockAdmin.connect.mockResolvedValue(undefined);
-      mockAdmin.fetchTopicMetadata.mockResolvedValue({
-        topics: [{ topic: 'test-topic' }],
+      mockKafkaClientInstance.fetchClusterMetadata.mockResolvedValue({
+        topicsCount: 1,
         clusterId: 'test-cluster',
         controllerId: 1,
       });
-      mockAdmin.disconnect.mockResolvedValue(undefined);
+      mockKafkaClientInstance.getConnectionStatus.mockReturnValue(true);
 
       jest.spyOn(process, 'memoryUsage').mockReturnValue({
         rss: 1024 * 1024 * 100,
@@ -303,7 +290,7 @@ describe('HealthCheckService', () => {
     it('should return unhealthy status when all components are down', async () => {
       // Arrange
       mockPoolInstance.connect.mockRejectedValue(new Error('DB down'));
-      mockAdmin.connect.mockRejectedValue(new Error('Kafka down'));
+      mockKafkaClientInstance.fetchClusterMetadata.mockRejectedValue(new Error('Kafka down'));
       jest.spyOn(process, 'memoryUsage').mockImplementation(() => {
         throw new Error('Service down');
       });
@@ -327,13 +314,12 @@ describe('HealthCheckService', () => {
         .mockResolvedValueOnce({ rows: [{ health_check: 1 }] })
         .mockResolvedValueOnce({ rows: [{ count: '5' }] });
 
-      mockAdmin.connect.mockResolvedValue(undefined);
-      mockAdmin.fetchTopicMetadata.mockResolvedValue({
-        topics: [{ topic: 'test-topic' }],
+      mockKafkaClientInstance.fetchClusterMetadata.mockResolvedValue({
+        topicsCount: 1,
         clusterId: 'test-cluster',
         controllerId: 1,
       });
-      mockAdmin.disconnect.mockResolvedValue(undefined);
+      mockKafkaClientInstance.getConnectionStatus.mockReturnValue(true);
 
       jest.spyOn(process, 'memoryUsage').mockReturnValue({
         rss: 1024 * 1024 * 100,

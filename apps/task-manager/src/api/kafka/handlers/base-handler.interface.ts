@@ -1,5 +1,15 @@
 import { EachMessagePayload } from 'kafkajs';
 
+// Simple logger interface for backward compatibility
+interface ILogger {
+  debug(message: string, info?: Record<string, any>): void;
+  info(message: string, info?: Record<string, any>): void;
+  warn(message: string, info?: Record<string, any>): void;
+  error(message: string, info?: Record<string, any>): void;
+  success(message: string, info?: Record<string, any>): void;
+  child(additionalContext: Record<string, any>): ILogger;
+}
+
 /**
  * Base interface for message handlers
  *
@@ -13,25 +23,26 @@ import { EachMessagePayload } from 'kafkajs';
  */
 export interface IHandler {
   /**
-   * Processes a Kafka message
+   * Processes a Kafka message with optional trace-aware logger
    *
    * This method is responsible for handling a single Kafka message
    * and performing the necessary business logic based on the message
    * content and headers.
    *
    * @param message - The full Kafka message payload containing headers, value, and metadata
+   * @param traceLogger - Optional trace-aware logger (if not provided, use default logger)
    * @returns Promise that resolves when message processing is complete
    * @throws Error - When message processing fails
    *
    * @example
    * ```typescript
    * class MyHandler implements IHandler {
-   *   async process(message: EachMessagePayload): Promise<void> {
+   *   async process(message: EachMessagePayload, traceLogger?: ILogger): Promise<void> {
    *     const data = JSON.parse(message.message.value?.toString() || '{}');
    *     await this.processData(data);
    *   }
    * }
    * ```
    */
-  process(message: EachMessagePayload): Promise<void>;
+  process(message: EachMessagePayload, traceLogger?: ILogger): Promise<void>;
 }

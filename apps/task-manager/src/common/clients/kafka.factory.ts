@@ -73,11 +73,11 @@ export class KafkaFactory {
         brokers: this.config.brokers,
       });
 
-      this.kafkaClient = new KafkaClient();
+      this.kafkaClient = KafkaClient.getInstance();
       await this.kafkaClient.connect();
 
       this.isInitialized = true;
-      logger.info('Kafka client initialized successfully');
+      // Remove: 'Kafka client initialized successfully' - infrastructure layer success
     } catch (error) {
       logger.error('Failed to initialize Kafka client', {
         error: error instanceof Error ? error.message : String(error),
@@ -149,7 +149,7 @@ export class KafkaFactory {
         await this.kafkaClient.disconnect();
         this.kafkaClient = null;
         this.isInitialized = false;
-        logger.info('Kafka client closed successfully');
+        // Remove: 'Kafka client closed successfully' - infrastructure layer success
       } catch (error) {
         logger.error('Failed to close Kafka client', {
           error: error instanceof Error ? error.message : String(error),

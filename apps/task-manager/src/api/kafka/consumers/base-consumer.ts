@@ -2,6 +2,7 @@ import { KafkaClient } from '../../../common/clients/kafka-client';
 import { IHandler } from '../handlers/base-handler.interface';
 import { IConsumer } from './consumer.interface';
 import { logger } from '../../../common/utils/logger';
+// KafkaJS auto-instrumentation manages context; no explicit OTEL APIs needed here
 
 /**
  * BaseConsumer provides common lifecycle implementation for all Kafka consumers.
@@ -129,5 +130,40 @@ export abstract class BaseConsumer implements IConsumer {
    */
   isConsuming(): boolean {
     return this.consuming;
+  }
+
+  /**
+   * Process message with automatic trace context
+   *
+   * @param message - Kafka message
+   * @param handler - Message handler
+   */
+  protected async processMessageWithTrace(
+    message: any,
+    handler: IHandler
+  ): Promise<void> {
+    try {
+      // Log message received with automatic trace context
+      logger.info('Kafka message received', {
+        topic: this.topic,
+        key: message.key?.toString(),
+        partition: message.partition,
+        offset: message.offset,
+      });
+
+      // Process message (kafkajs instrumentation creates consumer span and propagates context)
+      await handler.process(message, logger);
+
+
+    } catch (error) {
+      // Log error with automatic trace context
+      logger.error('Kafka message processing failed', {
+        topic: this.topic,
+        key: message.key?.toString(),
+        error: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+      });
+      throw error;
+    }
   }
 }

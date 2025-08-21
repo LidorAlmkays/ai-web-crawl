@@ -1,46 +1,58 @@
 import { EachMessagePayload } from 'kafkajs';
 import { BaseHandler } from '../base-handler';
-import { NewTaskStatusMessageDto } from '../../dtos/new-task-status-message.dto';
-import { TaskStatusHeaderDto } from '../../dtos/task-status-header.dto';
+import { WebCrawlNewTaskHeaderDto, WebCrawlNewTaskMessageDto } from '../../dtos';
 import { IWebCrawlTaskManagerPort } from '../../../../application/ports/web-crawl-task-manager.port';
+import { WebCrawlRequestPublisher } from '../../../../infrastructure/messaging/kafka/publishers/web-crawl-request.publisher';
 import { logger } from '../../../../common/utils/logger';
-import { TraceAttributes } from '../../../../common/utils/tracing/trace-attributes';
+import { validateDto } from '../../../../common/utils/validation';
 
 /**
  * Handler for new task messages
- * Processes task creation requests
+ * Processes task creation requests with enhanced trace context and web crawl request publishing
  */
 export class NewTaskHandler extends BaseHandler {
-  constructor(private readonly webCrawlTaskManager: IWebCrawlTaskManagerPort) {
+  private readonly webCrawlPublisher: WebCrawlRequestPublisher;
+
+  constructor(
+    private readonly webCrawlTaskManager: IWebCrawlTaskManagerPort,
+    webCrawlPublisher?: WebCrawlRequestPublisher
+  ) {
     super();
+    this.webCrawlPublisher = webCrawlPublisher || new WebCrawlRequestPublisher();
   }
 
   /**
-   * Process new task message
+   * Process new task message with enhanced trace context and web crawl request publishing
    */
   async process(message: EachMessagePayload): Promise<void> {
     const handlerName = 'NewTaskHandler';
-    const correlationId = this.logProcessingStart(message, handlerName);
+    const processingId = this.logProcessingStart(message, handlerName);
 
-    // Use tracing wrapper for the entire message processing
-    await this.traceKafkaMessage(message, 'new_task_processing', async () => {
+    // Process message (auto-instrumentation creates consumer span)
+    {
       try {
-        // Extract and validate message headers using stacked error handling
-        const headers = this.extractHeaders(message.message.headers);
-        const validatedHeaders = await this.validateDtoWithStackedError(
-          TaskStatusHeaderDto,
-          headers,
-          message,
-          handlerName,
-          correlationId
-        );
+        // Extract and validate message headers using new DTO structure
+        const headers = this.extractHeaders(message.message.headers as Record<string, Buffer | undefined> || {});
+        
+        // Extract trace context from headers
+        const traceContext = this.extractTraceContextFromHeaders(message.message.headers as Record<string, Buffer | undefined> || {});
+        this.logTraceContext(traceContext, 'new-task-processing');
+        
+        const headerValidationResult = await validateDto(WebCrawlNewTaskHeaderDto, headers);
+        
+        if (!headerValidationResult.isValid) {
+          this.logValidationError(
+            message,
+            handlerName,
+            headerValidationResult.errorMessage || 'Header validation failed',
+            processingId
+          );
+          throw new Error(`Invalid headers: ${headerValidationResult.errorMessage}`);
+        }
 
-        const taskId = validatedHeaders.id;
-
-        // Add trace event for header validation
-        this.addTraceEvent('headers_validated', {
-          taskId,
-          correlationId,
+        // Add business event for header validation
+        this.addBusinessEvent('headers_validated', {
+          processingId,
           'validation.duration': Date.now(),
         });
 
@@ -49,92 +61,127 @@ export class NewTaskHandler extends BaseHandler {
           message.message.value?.toString() || '{}'
         );
 
-        // Validate message body using stacked error handling
-        const validatedData = await this.validateDtoWithStackedError(
-          NewTaskStatusMessageDto,
-          messageBody,
-          message,
-          handlerName,
-          correlationId
-        );
+        // Validate message body using new DTO structure
+        const bodyValidationResult = await validateDto(WebCrawlNewTaskMessageDto, messageBody);
+        
+        if (!bodyValidationResult.isValid) {
+          this.logValidationError(
+            message,
+            handlerName,
+            bodyValidationResult.errorMessage || 'Body validation failed',
+            processingId
+          );
+          throw new Error(`Invalid message body: ${bodyValidationResult.errorMessage}`);
+        }
 
-        // Add trace event for body validation
-        this.addTraceEvent('body_validated', {
-          taskId,
-          correlationId,
+        const validatedData = bodyValidationResult.validatedData!;
+
+        // Add business event for body validation
+        this.addBusinessEvent('body_validated', {
+          processingId,
           'validation.duration': Date.now(),
         });
 
-        // Set task creation attributes
-        this.setTraceAttributes(
-          TraceAttributes.createTaskAttributes(
-            taskId,
-            'new',
-            undefined,
-            validatedData.base_url,
-            {
-              'user.email': validatedData.user_email,
-              'user.query': validatedData.user_query,
-              correlationId,
-            }
-          )
-        );
+        // Log received data for new task creation
+        logger.info('New task creation received', {
+          userEmail: validatedData.user_email,
+          userQuery: validatedData.user_query,
+          baseUrl: validatedData.base_url,
+          status: headers.status,
+          messageTimestamp: headers.timestamp,
+          traceId: traceContext?.traceId,
+          spanId: traceContext?.spanId,
+        });
 
-        // Create the task using the ID from the message header
+        // Add business attributes on active span
+        this.addBusinessAttributes({
+          'business.operation': 'create_task',
+          'business.entity': 'web_crawl_task',
+          'user.email': validatedData.user_email,
+          'user.query.length': validatedData.user_query.length,
+          'web.url': validatedData.base_url,
+        });
+
+        // Create the task without providing an ID (DB generates UUID)
         const createdTask = await this.webCrawlTaskManager.createWebCrawlTask(
-          taskId,
           validatedData.user_email,
           validatedData.user_query,
           validatedData.base_url
         );
 
-        // Add trace event for task creation
-        this.addTraceEvent('task_created', {
+        // Add business event for task creation with trace context
+        this.addBusinessEvent('task_created', {
           taskId: createdTask.id,
           status: createdTask.status,
-          correlationId,
+          processingId,
+          traceId: traceContext?.traceId,
+          spanId: traceContext?.spanId,
         });
+
+        // Task creation successful - no need to log success
+
+        // Publish web crawl request (auto-instrumentation will inject W3C context)
+        await this.publishWebCrawlRequest(createdTask);
 
         this.logProcessingSuccess(
           message,
           handlerName,
-          correlationId,
+          processingId,
           createdTask
         );
-
-        // Log important event (task creation success) at INFO level
-        logger.info(`Web-crawl task created: ${createdTask.id}`, {
-          taskId: createdTask.id,
-          correlationId,
-          userEmail: createdTask.userEmail,
-          status: createdTask.status,
-          processingStage: 'TASK_CREATION_SUCCESS',
-        });
-
-        return createdTask;
+        // done
       } catch (error) {
-        // Add error attributes to trace
-        this.setTraceAttributes(
-          TraceAttributes.createErrorAttributes(
-            error as Error,
-            'TASK_CREATION_ERROR',
-            {
-              correlationId,
-              taskId: this.extractHeaders(message.message.headers).id,
-            }
-          )
-        );
+        // Add error attributes to active span
+        this.addBusinessAttributes({
+          'error.type': error instanceof Error ? error.constructor.name : 'Unknown',
+          'error.message': error instanceof Error ? error.message : String(error),
+          'error.stack': error instanceof Error ? error.stack : undefined,
+          'business.operation': 'create_task_error',
+        });
 
         this.handleError(
           message,
           handlerName,
           error,
-          correlationId,
+          processingId,
           'TASK_CREATION'
         );
 
         throw error;
       }
-    });
+    }
+  }
+
+  /**
+   * Publish web crawl request with trace context
+   */
+  private async publishWebCrawlRequest(
+    task: { id: string; userEmail: string; userQuery: string; originalUrl: string }
+  ): Promise<void> {
+    try {
+      const publishResult = await this.webCrawlPublisher.publishFromTaskData(
+        task.id,
+        task.userEmail,
+        task.userQuery,
+        task.originalUrl
+      );
+
+      if (!publishResult.success) {
+        throw new Error(`Failed to publish web crawl request: ${publishResult.error}`);
+      }
+
+
+    } catch (error) {
+      logger.error('Failed to publish web crawl request', {
+        taskId: task.id,
+        error: error instanceof Error ? error.message : String(error),
+        // Include current trace context
+        ...(this.getCurrentTraceContext() && {
+          traceId: this.getCurrentTraceContext()!.traceId,
+          spanId: this.getCurrentTraceContext()!.spanId,
+        }),
+      });
+      throw error;
+    }
   }
 }

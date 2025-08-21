@@ -28,10 +28,23 @@ process.env.KAFKAJS_LOG_LEVEL = 'error';
  * committed after successful processing, preventing message loss.
  */
 export class KafkaClient {
+  private static instance: KafkaClient | null = null;
   private kafka: Kafka;
   private consumer: Consumer;
   private producer: Producer;
   private isConnected = false;
+
+  /**
+   * Gets the singleton instance of KafkaClient
+   * 
+   * @returns The singleton KafkaClient instance
+   */
+  public static getInstance(): KafkaClient {
+    if (!KafkaClient.instance) {
+      KafkaClient.instance = new KafkaClient();
+    }
+    return KafkaClient.instance;
+  }
 
   /**
    * Creates a new KafkaClient instance
@@ -39,7 +52,7 @@ export class KafkaClient {
    * Initializes the Kafka client with the configured brokers, consumer group,
    * and producer settings. Sets up connection parameters and logging.
    */
-  constructor() {
+  private constructor() {
     this.kafka = new Kafka({
       clientId: kafkaConfig.clientId,
       brokers: kafkaConfig.brokers,
@@ -85,7 +98,7 @@ export class KafkaClient {
       this.isConnected = true;
 
       // Log important event (Kafka connection) at INFO level
-      logger.info('Kafka connected successfully');
+      // Remove: 'Kafka connected successfully' - let Kafka client handle its own log
     } catch (error) {
       logger.error('Failed to connect to Kafka', { error });
       throw error;
@@ -177,7 +190,7 @@ export class KafkaClient {
       try {
         await admin.disconnect();
       } catch (e) {
-        logger.warn('Failed to disconnect Kafka admin client cleanly');
+        logger.error('Failed to disconnect Kafka admin client cleanly');
       }
     }
   }
@@ -234,7 +247,7 @@ export class KafkaClient {
    */
   async startConsuming(): Promise<void> {
     if (this.isRunning) {
-      logger.warn('Consumer is already running');
+      logger.error('Consumer is already running');
       return;
     }
 
@@ -249,7 +262,7 @@ export class KafkaClient {
             const handler = this.messageHandlers.get(topic);
 
             if (!handler) {
-              logger.warn(`No handler found for topic: ${topic}`);
+              logger.error(`No handler found for topic: ${topic}`);
               return;
             }
 
@@ -348,6 +361,101 @@ export class KafkaClient {
     return this.isConnected;
   }
 
+
+
+  /**
+   * Produces messages to Kafka with advanced options
+   *
+   * @param options - Production options including topic, messages, timeout, and acks
+   * @returns Promise resolving to array of message results
+   * @throws Error - When message production fails
+   *
+   * @example
+   * ```typescript
+   * const results = await kafkaClient.produce({
+   *   topic: 'my-topic',
+   *   messages: [{ key: 'key1', value: 'value1' }],
+   *   timeout: 30000,
+   *   acks: 1
+   * });
+   * ```
+   */
+  async produce(options: {
+    topic: string;
+    messages: Array<{
+      key?: string | Buffer;
+      value: string | Buffer;
+      headers?: Record<string, Buffer>;
+    }>;
+    timeout?: number;
+    acks?: number;
+  }): Promise<Array<{ partition: number; offset: string; baseOffset: number }>> {
+    try {
+      const result = await this.producer.send({
+        topic: options.topic,
+        messages: options.messages,
+        timeout: options.timeout || 30000,
+        acks: options.acks || 1,
+      });
+
+      logger.debug('Messages produced to Kafka', {
+        topic: options.topic,
+        messageCount: options.messages.length,
+        results: result,
+      });
+
+      return result.map((record) => ({
+        partition: record.partition,
+        offset: record.offset || '',
+        baseOffset: typeof record.baseOffset === 'number' ? record.baseOffset : 0,
+      }));
+    } catch (error) {
+      logger.error('Failed to produce messages to Kafka', {
+        topic: options.topic,
+        error,
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Gets Kafka metadata for specified topics
+   *
+   * @param topics - Array of topic names to get metadata for
+   * @returns Promise resolving to topic metadata
+   * @throws Error - When metadata retrieval fails
+   *
+   * @example
+   * ```typescript
+   * const metadata = await kafkaClient.getMetadata(['my-topic']);
+   * console.log('Topic partitions:', metadata.topics[0].partitions.length);
+   * ```
+   */
+  async getMetadata(topics: string[]): Promise<{ topics: ITopicMetadata[] }> {
+    try {
+      const metadata = await this.kafka.admin().fetchTopicMetadata({ topics });
+      logger.debug('Kafka metadata retrieved', { topics, metadata });
+      return metadata;
+    } catch (error) {
+      logger.error('Failed to get Kafka metadata', { topics, error });
+      throw error;
+    }
+  }
+
+  /**
+   * Gets the current Kafka client configuration
+   *
+   * @returns Configuration object
+   */
+  getConfig(): any {
+    return {
+      clientId: kafkaConfig.clientId,
+      brokers: kafkaConfig.brokers,
+      groupId: kafkaConfig.groupId,
+      isConnected: this.isConnected,
+    };
+  }
+
   /**
    * Pauses consumption for specific topics
    *
@@ -364,7 +472,7 @@ export class KafkaClient {
   ): Promise<void> {
     try {
       await this.consumer.pause(topics);
-      logger.info('Topics paused successfully', { topics });
+      logger.debug('Topics paused successfully', { topics });
     } catch (error) {
       logger.error('Failed to pause topics', { error, topics });
       throw error;
@@ -387,7 +495,7 @@ export class KafkaClient {
   ): Promise<void> {
     try {
       await this.consumer.resume(topics);
-      logger.info('Topics resumed successfully', { topics });
+      logger.debug('Topics resumed successfully', { topics });
     } catch (error) {
       logger.error('Failed to resume topics', { error, topics });
       throw error;

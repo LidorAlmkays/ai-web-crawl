@@ -17,4 +17,10 @@
 export * from './postgres';
 export * from './kafka';
 export * from './app';
-export * from './logger';
+export * from './observability';
+export * from './rest';
+
+// Logger Level Enum
+export { LoggerLevel } from '../common/enums/logger-level.enum';
+
+export type { KafkaTopicsConfig, KafkaTopicConfig as KafkaTopicConfigType, TopicValidationResult } from '../common/types';

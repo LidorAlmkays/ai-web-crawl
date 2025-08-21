@@ -1,5 +1,5 @@
 import { Pool } from 'pg';
-import { IWebCrawlMetricsDataPort } from '../../../../application/metrics/ports/IWebCrawlMetricsDataPort';
+import { IWebCrawlMetricsDataPort } from '../../../ports/web-crawl-metrics-data.port';
 import { WebCrawlMetrics } from '../../../../domain/types/metrics.types';
 
 export class WebCrawlMetricsAdapter implements IWebCrawlMetricsDataPort {

@@ -1,11 +1,10 @@
 import { EachMessagePayload } from 'kafkajs';
 import { BaseHandler } from '../base-handler';
 import { validateDto } from '../../../../common/utils/validation';
-import { CompletedTaskStatusMessageDto } from '../../dtos/completed-task-status-message.dto';
+import { WebCrawlCompletedTaskMessageDto } from '../../dtos';
 import { IWebCrawlTaskManagerPort } from '../../../../application/ports/web-crawl-task-manager.port';
 import { logger } from '../../../../common/utils/logger';
 import { TaskStatus } from '../../../../common/enums/task-status.enum';
-import { TraceAttributes } from '../../../../common/utils/tracing/trace-attributes';
 
 /**
  * Handler for complete task messages
@@ -21,26 +20,23 @@ export class CompleteTaskHandler extends BaseHandler {
    */
   async process(message: EachMessagePayload): Promise<void> {
     const handlerName = 'CompleteTaskHandler';
-    const correlationId = this.logProcessingStart(message, handlerName);
+    const processingId = this.logProcessingStart(message, handlerName);
 
-    // Use tracing wrapper for the entire message processing
-    await this.traceKafkaMessage(
-      message,
-      'complete_task_processing',
-      async () => {
+    // Process message (auto-instrumentation creates consumer span)
+    {
         try {
           // Extract headers
           const headers = this.extractHeaders(message.message.headers);
-          const { id } = headers;
+          const { task_id } = headers;
 
-          if (!id) {
+          if (!task_id) {
             throw new Error('Task ID is required in message headers');
           }
 
-          // Add trace event for header extraction
-          this.addTraceEvent('headers_extracted', {
-            taskId: id,
-            correlationId,
+          // Add business event for header extraction
+          this.addBusinessEvent('headers_extracted', {
+            taskId: task_id,
+            processingId,
           });
 
           // Parse message body
@@ -50,7 +46,7 @@ export class CompleteTaskHandler extends BaseHandler {
 
           // Validate message body
           const validationResult = await validateDto(
-            CompletedTaskStatusMessageDto,
+            WebCrawlCompletedTaskMessageDto,
             messageBody
           );
           if (!validationResult.isValid) {
@@ -58,7 +54,7 @@ export class CompleteTaskHandler extends BaseHandler {
               message,
               handlerName,
               validationResult.errorMessage,
-              correlationId
+              processingId
             );
             throw new Error(
               `Invalid complete task data: ${validationResult.errorMessage}`
@@ -66,88 +62,81 @@ export class CompleteTaskHandler extends BaseHandler {
           }
 
           const validatedData =
-            validationResult.validatedData as CompletedTaskStatusMessageDto;
+            validationResult.validatedData as WebCrawlCompletedTaskMessageDto;
 
-          // Add trace event for validation
-          this.addTraceEvent('body_validated', {
-            taskId: id,
-            correlationId,
+          // Add business event for validation
+          this.addBusinessEvent('body_validated', {
+            taskId: task_id,
+            processingId,
             'validation.duration': Date.now(),
           });
 
-          // Set task completion attributes
-          this.setTraceAttributes(
-            TraceAttributes.createTaskAttributes(
-              id,
-              TaskStatus.COMPLETED,
-              undefined,
-              undefined,
-              {
-                'crawl.result.size': validatedData.crawl_result?.length || 0,
-                correlationId,
-              }
-            )
-          );
+          // Add business attributes on active span
+          this.addBusinessAttributes({
+            'business.operation': 'complete_task',
+            'business.entity': 'web_crawl_task',
+            'task.id': task_id,
+            'task.status': TaskStatus.COMPLETED,
+            'crawl.result.size': validatedData.crawl_result?.length || 0,
+          });
 
           // Update the task status to completed
           const updatedTask =
             await this.webCrawlTaskManager.updateWebCrawlTaskStatus(
-              id,
+              task_id,
               TaskStatus.COMPLETED,
               validatedData.crawl_result
             );
 
           if (!updatedTask) {
-            throw new Error(`Task not found: ${id}`);
+            throw new Error(`Task not found: ${task_id}`);
           }
 
-          // Add trace event for task completion
-          this.addTraceEvent('task_completed', {
+          // Log received data for task completion
+          logger.info('Task completion update received', {
+            taskId: task_id,
+            status: TaskStatus.COMPLETED,
+            crawlResultSize: validatedData.crawl_result?.length || 0,
+            messageTimestamp: headers.timestamp,
+            traceId: this.getCurrentTraceContext()?.traceId,
+            spanId: this.getCurrentTraceContext()?.spanId,
+          });
+
+          // Add business event for task completion
+          this.addBusinessEvent('task_completed', {
             taskId: updatedTask.id,
             status: updatedTask.status,
-            correlationId,
+            processingId,
             'completion.duration': Date.now(),
           });
 
           this.logProcessingSuccess(
             message,
             handlerName,
-            correlationId,
+            processingId,
             updatedTask
           );
-          logger.info(`Web-crawl task completed: ${updatedTask.id}`, {
-            correlationId,
-            taskId: updatedTask.id,
-            userEmail: updatedTask.userEmail,
-            status: updatedTask.status,
-            processingStage: 'TASK_COMPLETION_SUCCESS',
-          });
-
-          return updatedTask;
+          // Task completion successful - no need to log success
+          // done
         } catch (error) {
-          // Add error attributes to trace
-          this.setTraceAttributes(
-            TraceAttributes.createErrorAttributes(
-              error as Error,
-              'TASK_COMPLETION_ERROR',
-              {
-                correlationId,
-                taskId: this.extractHeaders(message.message.headers).id,
-              }
-            )
-          );
+          // Add error attributes to active span
+          this.addBusinessAttributes({
+            'error.type': error instanceof Error ? error.constructor.name : 'Unknown',
+            'error.message': error instanceof Error ? error.message : String(error),
+            'error.stack': error instanceof Error ? error.stack : undefined,
+            'business.operation': 'complete_task_error',
+          });
 
           this.handleError(
             message,
             handlerName,
             error,
-            correlationId,
+            processingId,
             'TASK_COMPLETION'
           );
 
           throw error;
         }
       }
-    );
   }
 }

@@ -5,30 +5,13 @@ import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
 import { resourceFromAttributes } from '@opentelemetry/resources';
 import { SemanticResourceAttributes } from '@opentelemetry/semantic-conventions';
 import { BatchSpanProcessor } from '@opentelemetry/sdk-trace-base';
-import { getTracingConfig, validateTracingConfig } from '../../config/tracing';
+import { observabilityConfig } from '../../config/observability';
+import { SpanDebugger } from './tracing/span-debug';
 
-// Suppress instrumentation warnings for modules that may already be loaded
-// Set environment variables to suppress OTEL warnings
+// Set environment variables for OTEL configuration
 process.env.OTEL_NODE_RESOURCE_DETECTORS = 'none';
 process.env.OTEL_TRACES_SAMPLER = 'always_on';
 process.env.OTEL_TRACES_SAMPLER_ARG = '1.0';
-
-// Override console.warn to suppress specific OTEL warnings
-const originalWarn = console.warn;
-console.warn = (...args: any[]) => {
-  const message = args[0];
-  if (
-    typeof message === 'string' &&
-    (message.includes('Module express has been loaded before') ||
-      message.includes('Module kafkajs has been loaded before') ||
-      message.includes('Module pg has been loaded before') ||
-      message.includes('Module pg-pool has been loaded before'))
-  ) {
-    // Suppress these specific warnings
-    return;
-  }
-  originalWarn.apply(console, args);
-};
 
 /**
  * Initialize OpenTelemetry with enhanced tracing support
@@ -38,26 +21,18 @@ console.warn = (...args: any[]) => {
  * - Batch span processor for performance
  * - Resource attributes for service identification
  * - Auto-instrumentation for common libraries
- * - Graceful shutdown handling
+ * - Development span debugging (non-production only)
  */
 export const initOpenTelemetry = () => {
-  // Get and validate tracing configuration
-  const config = getTracingConfig();
-  const validation = validateTracingConfig(config);
-
-  if (!validation.isValid) {
-    diag.error('Invalid tracing configuration:', validation.errors);
-    throw new Error(
-      `Invalid tracing configuration: ${validation.errors.join(', ')}`
-    );
-  }
+  // Use consolidated observability config
+  const config = observabilityConfig;
 
   // Set up diagnostics
   diag.setLogger(new DiagConsoleLogger(), DiagLogLevel.INFO);
 
   // Configure trace exporter
   const traceExporter = new OTLPTraceExporter({
-    url: config.exportEndpoint,
+    url: config.traces.endpoint,
     headers: {
       'Content-Type': 'application/json',
     },
@@ -65,19 +40,17 @@ export const initOpenTelemetry = () => {
 
   // Configure resource attributes
   const resource = resourceFromAttributes({
-    [SemanticResourceAttributes.SERVICE_NAME]: config.serviceName,
-    [SemanticResourceAttributes.SERVICE_VERSION]:
-      config.attributes['service.version'],
-    [SemanticResourceAttributes.DEPLOYMENT_ENVIRONMENT]: config.environment,
-    ...config.attributes,
+    [SemanticResourceAttributes.SERVICE_NAME]: config.service.name,
+    [SemanticResourceAttributes.SERVICE_VERSION]: config.service.version,
+    [SemanticResourceAttributes.DEPLOYMENT_ENVIRONMENT]: config.service.environment,
   });
 
   // Configure span processor with batching for performance
   const spanProcessor = new BatchSpanProcessor(traceExporter, {
-    maxQueueSize: config.batchProcessor.maxQueueSize,
-    maxExportBatchSize: config.batchProcessor.maxExportBatchSize,
-    scheduledDelayMillis: config.batchProcessor.scheduledDelayMillis,
-    exportTimeoutMillis: config.batchProcessor.exportTimeoutMillis,
+    maxQueueSize: config.traces.batch.maxQueueSize,
+    maxExportBatchSize: config.traces.batch.maxExportBatchSize,
+    scheduledDelayMillis: config.traces.batch.scheduledDelayMillis,
+    exportTimeoutMillis: config.traces.batch.exportTimeoutMillis,
   });
 
   // Create SDK with enhanced configuration
@@ -86,51 +59,29 @@ export const initOpenTelemetry = () => {
     spanProcessors: [spanProcessor],
     instrumentations: [
       getNodeAutoInstrumentations({
-        // Disable specific instrumentations that cause warnings
-        '@opentelemetry/instrumentation-express': {
-          enabled: false,
-        },
-        '@opentelemetry/instrumentation-kafkajs': {
-          enabled: false,
-        },
-        '@opentelemetry/instrumentation-pg': {
-          enabled: false,
-        },
+        // Enable core auto-instrumentations (no custom hooks to satisfy typings)
+        '@opentelemetry/instrumentation-express': { enabled: true },
+        '@opentelemetry/instrumentation-kafkajs': { enabled: true },
+        '@opentelemetry/instrumentation-pg': { enabled: true },
       }),
     ],
   });
 
   // Start the SDK
   sdk.start();
-  diag.info('OpenTelemetry SDK started with trace support', {
-    serviceName: config.serviceName,
-    environment: config.environment,
-    samplingRate: config.samplingRate,
-    exportEndpoint: config.exportEndpoint,
+  diag.info('OpenTelemetry SDK started with auto-instrumentation enabled', {
+    serviceName: config.service.name,
+    environment: config.service.environment,
+    samplingRate: config.traces.samplingRate,
+    exportEndpoint: config.traces.endpoint,
+    autoInstrumentations: ['express', 'kafkajs', 'pg'],
   });
 
-  // Graceful shutdown handling
-  process.on('SIGTERM', () => {
-    diag.info('Received SIGTERM, shutting down OpenTelemetry SDK...');
-    sdk
-      .shutdown()
-      .then(() => diag.info('OpenTelemetry SDK has been shutdown successfully'))
-      .catch((error) =>
-        diag.error('Error shutting down OpenTelemetry SDK', error)
-      )
-      .finally(() => process.exit(0));
-  });
-
-  process.on('SIGINT', () => {
-    diag.info('Received SIGINT, shutting down OpenTelemetry SDK...');
-    sdk
-      .shutdown()
-      .then(() => diag.info('OpenTelemetry SDK has been shutdown successfully'))
-      .catch((error) =>
-        diag.error('Error shutting down OpenTelemetry SDK', error)
-      )
-      .finally(() => process.exit(0));
-  });
+  // Enable span debugging in development environment
+  if (config.service.environment !== 'production') {
+    SpanDebugger.enable();
+    diag.info('Span debugging enabled for development environment');
+  }
 
   return sdk;
 };

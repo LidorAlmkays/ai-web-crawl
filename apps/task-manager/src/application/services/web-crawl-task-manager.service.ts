@@ -3,8 +3,7 @@ import { WebCrawlTask } from '../../domain/entities/web-crawl-task.entity';
 import { TaskStatus } from '../../common/enums/task-status.enum';
 import { IWebCrawlTaskRepositoryPort } from '../../infrastructure/ports/web-crawl-task-repository.port';
 import { logger } from '../../common/utils/logger';
-import { TraceManager } from '../../common/utils/tracing/trace-manager';
-import { TraceAttributes } from '../../common/utils/tracing/trace-attributes';
+import { trace } from '@opentelemetry/api';
 
 /**
  * WebCrawlTaskManager Service
@@ -20,8 +19,6 @@ import { TraceAttributes } from '../../common/utils/tracing/trace-attributes';
  * IWebCrawlTaskManagerPort interface.
  */
 export class WebCrawlTaskManagerService implements IWebCrawlTaskManagerPort {
-  private traceManager = TraceManager.getInstance();
-
   /**
    * Creates a new WebCrawlTaskManagerService instance
    *
@@ -59,74 +56,63 @@ export class WebCrawlTaskManagerService implements IWebCrawlTaskManagerPort {
    * ```
    */
   async createWebCrawlTask(
-    taskId: string,
     userEmail: string,
     userQuery: string,
     originalUrl: string
   ): Promise<WebCrawlTask> {
-    return this.traceManager.traceOperation(
-      'create_web_crawl_task',
-      async () => {
-        logger.debug('Creating new web crawl task', {
-          taskId,
-          userEmail,
-          userQuery,
-          originalUrl,
-        });
-
-        // Set trace attributes for task creation
-        this.traceManager.setAttributes(
-          TraceAttributes.createTaskAttributes(
-            taskId,
-            'new',
-            undefined,
-            originalUrl,
-            {
-              'user.email': userEmail,
-              'user.query': userQuery,
-              'business.operation': 'task_creation',
-            }
-          )
-        );
-
-        const task = WebCrawlTask.create(
-          taskId,
-          userEmail,
-          userQuery,
-          originalUrl,
-          new Date()
-        );
-
-        // Add trace event for domain entity creation
-        this.traceManager.addEvent('domain_entity_created', {
-          taskId,
-          status: task.status,
-        });
-
-        const createdTask =
-          await this.webCrawlTaskRepository.createWebCrawlTask(task);
-
-        // Add trace event for database persistence
-        this.traceManager.addEvent('task_persisted', {
-          taskId: createdTask.id,
-          status: createdTask.status,
-        });
-
-        logger.info('Web crawl task created successfully', {
-          taskId: createdTask.id,
-          userEmail: createdTask.userEmail,
-          status: createdTask.status,
-        });
-
-        return createdTask;
-      },
-      {
-        [TraceAttributes.BUSINESS_OPERATION]: 'create_web_crawl_task',
-        [TraceAttributes.BUSINESS_ENTITY]: 'web_crawl_task',
-        'task.id': taskId,
+    const activeSpan = trace.getActiveSpan();
+    
+    // Add business attributes to active span
+    if (activeSpan) {
+      activeSpan.setAttributes({
+        'business.operation': 'create_web_crawl_task',
+        'business.entity': 'web_crawl_task',
         'user.email': userEmail,
-      }
+        'user.query.length': userQuery.length,
+        'web.url': originalUrl,
+      });
+    }
+
+    logger.debug('Creating new web crawl task', {
+      userEmail,
+      userQuery,
+      originalUrl,
+    });
+
+    const receivedAt = new Date();
+    const createdTask = await this.webCrawlTaskRepository.createWebCrawlTask(
+      userEmail,
+      userQuery,
+      originalUrl,
+      receivedAt
     );
+
+    // Add business event for database persistence
+    if (activeSpan) {
+      activeSpan.addEvent('business.task_persisted', {
+        taskId: createdTask.id,
+        status: createdTask.status,
+        'persistence.layer': 'database',
+      });
+    }
+
+    // Update span attributes with the generated task ID
+    if (activeSpan) {
+      activeSpan.setAttributes({
+        'task.id': createdTask.id,
+        'task.status': createdTask.status,
+        'task.created_at': createdTask.receivedAt.toISOString(),
+      });
+    }
+
+    // Success log (application layer): task persisted successfully
+    logger.info('Web crawl task created successfully', {
+      taskId: createdTask.id,
+      userEmail: createdTask.userEmail,
+      status: createdTask.status,
+    });
+
+    return createdTask;
   }
 
   /**
@@ -144,13 +130,41 @@ export class WebCrawlTaskManagerService implements IWebCrawlTaskManagerPort {
    * ```
    */
   async getWebCrawlTaskById(taskId: string): Promise<WebCrawlTask | null> {
+    const activeSpan = trace.getActiveSpan();
+    
+    // Add business attributes to active span
+    if (activeSpan) {
+      activeSpan.setAttributes({
+        'business.operation': 'get_web_crawl_task_by_id',
+        'business.entity': 'web_crawl_task',
+        'task.id': taskId,
+      });
+    }
+
     logger.debug('Getting web crawl task by ID', { taskId });
 
     const task = await this.webCrawlTaskRepository.findWebCrawlTaskById(taskId);
 
     if (!task) {
-      logger.warn('Web crawl task not found', { taskId });
+      // Add business event for task not found
+      if (activeSpan) {
+        activeSpan.addEvent('business.task_not_found', {
+          taskId,
+          'search.criteria': 'by_id',
+        });
+      }
+
+      logger.error('Web crawl task not found', { taskId });
       return null;
+    }
+
+    // Add business event for successful retrieval
+    if (activeSpan) {
+      activeSpan.addEvent('business.task_retrieved', {
+        taskId: task.id,
+        status: task.status,
+        'search.criteria': 'by_id',
+      });
     }
 
     logger.debug('Web crawl task retrieved successfully', {
@@ -161,33 +175,7 @@ export class WebCrawlTaskManagerService implements IWebCrawlTaskManagerPort {
     return task;
   }
 
-  /**
-   * Retrieves all web crawl tasks for a specific user
-   *
-   * @param userEmail - Email address of the user whose tasks to retrieve
-   * @returns Promise resolving to an array of WebCrawlTask entities
-   *
-   * @example
-   * ```typescript
-   * const userTasks = await service.getWebCrawlTasksByUserEmail('user@example.com');
-   * console.log(`User has ${userTasks.length} tasks`);
-   * ```
-   */
-  async getWebCrawlTasksByUserEmail(
-    userEmail: string
-  ): Promise<WebCrawlTask[]> {
-    logger.debug('Getting web crawl tasks by user email', { userEmail });
 
-    const tasks =
-      await this.webCrawlTaskRepository.findWebCrawlTasksByUserEmail(userEmail);
-
-    logger.info('Retrieved web crawl tasks for user', {
-      userEmail,
-      taskCount: tasks.length,
-    });
-
-    return tasks;
-  }
 
   /**
    * Retrieves all web crawl tasks with a specific status
@@ -202,11 +190,31 @@ export class WebCrawlTaskManagerService implements IWebCrawlTaskManagerPort {
    * ```
    */
   async getWebCrawlTasksByStatus(status: TaskStatus): Promise<WebCrawlTask[]> {
+    const activeSpan = trace.getActiveSpan();
+    
+    // Add business attributes to active span
+    if (activeSpan) {
+      activeSpan.setAttributes({
+        'business.operation': 'get_web_crawl_tasks_by_status',
+        'business.entity': 'web_crawl_task',
+        'task.status': status,
+      });
+    }
+
     logger.debug('Getting web crawl tasks by status', { status });
 
     const tasks = await this.webCrawlTaskRepository.findWebCrawlTasksByStatus(
       status
     );
+
+    // Add business event for successful retrieval
+    if (activeSpan) {
+      activeSpan.addEvent('business.tasks_retrieved_by_status', {
+        status,
+        taskCount: tasks.length,
+        'search.criteria': 'by_status',
+      });
+    }
 
     logger.info('Retrieved web crawl tasks by status', {
       status,
@@ -216,28 +224,7 @@ export class WebCrawlTaskManagerService implements IWebCrawlTaskManagerPort {
     return tasks;
   }
 
-  /**
-   * Retrieves all web crawl tasks in the system
-   *
-   * @returns Promise resolving to an array of all WebCrawlTask entities
-   *
-   * @example
-   * ```typescript
-   * const allTasks = await service.getAllWebCrawlTasks();
-   * console.log(`Total tasks in system: ${allTasks.length}`);
-   * ```
-   */
-  async getAllWebCrawlTasks(): Promise<WebCrawlTask[]> {
-    logger.debug('Getting all web crawl tasks');
 
-    const tasks = await this.webCrawlTaskRepository.findAllWebCrawlTasks();
-
-    logger.info('Retrieved all web crawl tasks', {
-      taskCount: tasks.length,
-    });
-
-    return tasks;
-  }
 
   /**
    * Updates the status of an existing web crawl task
@@ -267,91 +254,76 @@ export class WebCrawlTaskManagerService implements IWebCrawlTaskManagerPort {
     status: TaskStatus,
     result?: string
   ): Promise<WebCrawlTask | null> {
-    return this.traceManager.traceOperation(
-      'update_web_crawl_task_status',
-      async () => {
-        logger.debug('Updating web crawl task status', {
-          taskId,
-          status,
-          hasResult: !!result,
-        });
-
-        // Set trace attributes for status update
-        this.traceManager.setAttributes(
-          TraceAttributes.createTaskAttributes(
-            taskId,
-            status,
-            undefined,
-            undefined,
-            {
-              'status.transition': status,
-              'result.size': result?.length || 0,
-              'business.operation': 'task_status_update',
-            }
-          )
-        );
-
-        const task = await this.webCrawlTaskRepository.findWebCrawlTaskById(
-          taskId
-        );
-        if (!task) {
-          logger.warn('Web crawl task not found for status update', { taskId });
-
-          // Add trace event for task not found
-          this.traceManager.addEvent('task_not_found', {
-            taskId,
-            requestedStatus: status,
-          });
-
-          return null;
-        }
-
-        // Add trace event for task retrieval
-        this.traceManager.addEvent('task_retrieved', {
-          taskId,
-          currentStatus: task.status,
-          requestedStatus: status,
-        });
-
-        // Update task based on status
-        if (status === TaskStatus.COMPLETED) {
-          task.markAsCompleted(result || 'Task completed successfully');
-        } else if (status === TaskStatus.ERROR) {
-          task.markAsError(result || 'Task failed with error');
-        } else if (status === TaskStatus.NEW) {
-          task.markAsStarted();
-        }
-
-        // Add trace event for domain entity update
-        this.traceManager.addEvent('domain_entity_updated', {
-          taskId,
-          newStatus: task.status,
-          previousStatus: task.status, // Note: domain entity doesn't track previous status
-        });
-
-        const updatedTask =
-          await this.webCrawlTaskRepository.updateWebCrawlTask(task);
-
-        // Add trace event for database update
-        this.traceManager.addEvent('task_updated_in_database', {
-          taskId: updatedTask.id,
-          status: updatedTask.status,
-        });
-
-        logger.info('Web crawl task status updated successfully', {
-          taskId: updatedTask.id,
-          status: updatedTask.status,
-        });
-
-        return updatedTask;
-      },
-      {
-        [TraceAttributes.BUSINESS_OPERATION]: 'update_web_crawl_task_status',
-        [TraceAttributes.BUSINESS_ENTITY]: 'web_crawl_task',
+    const activeSpan = trace.getActiveSpan();
+    
+    // Add business attributes to active span
+    if (activeSpan) {
+      activeSpan.setAttributes({
+        'business.operation': 'update_web_crawl_task_status',
+        'business.entity': 'web_crawl_task',
         'task.id': taskId,
         'task.status': status,
-      }
+        'result.size': result?.length || 0,
+        'status.transition': status,
+      });
+    }
+
+    logger.debug('Updating web crawl task status', {
+      taskId,
+      status,
+      hasResult: !!result,
+    });
+
+    // Create a minimal task entity with just the data we need for the update
+    const now = new Date();
+    const task = new WebCrawlTask(
+      taskId,
+      '', // userEmail - not needed for update
+      '', // userQuery - not needed for update  
+      '', // originalUrl - not needed for update
+      now, // receivedAt - not needed for update
+      status,
+      now, // createdAt - not needed for update
+      now  // updatedAt
     );
+
+    // Update task based on status
+    if (status === TaskStatus.COMPLETED) {
+      task.markAsCompleted(result || 'Task completed successfully');
+    } else if (status === TaskStatus.ERROR) {
+      task.markAsError(result || 'Task failed with error');
+    } else if (status === TaskStatus.NEW) {
+      task.markAsStarted();
+    }
+
+    // Add business event for domain entity update
+    if (activeSpan) {
+      activeSpan.addEvent('business.domain_entity_updated', {
+        taskId,
+        newStatus: task.status,
+        'entity.type': 'WebCrawlTask',
+      });
+    }
+
+    const updatedTask =
+      await this.webCrawlTaskRepository.updateWebCrawlTask(task);
+
+    // Add business event for database update
+    if (activeSpan) {
+      activeSpan.addEvent('business.task_updated_in_database', {
+        taskId: updatedTask.id,
+        status: updatedTask.status,
+        'persistence.layer': 'database',
+      });
+    }
+
+    // Success log (application layer): task updated successfully in DB
+    logger.info('Web crawl task updated successfully', {
+      taskId: updatedTask.id,
+      status: updatedTask.status,
+    });
+
+    return updatedTask;
   }
 
   /**
@@ -374,10 +346,19 @@ export class WebCrawlTaskManagerService implements IWebCrawlTaskManagerPort {
     completed: number;
     error: number;
   }> {
+    const activeSpan = trace.getActiveSpan();
+    
+    // Add business attributes to active span
+    if (activeSpan) {
+      activeSpan.setAttributes({
+        'business.operation': 'get_web_crawl_task_statistics',
+        'business.entity': 'web_crawl_task',
+      });
+    }
+
     logger.debug('Getting web crawl task statistics');
 
-    const [total, newCount, completedCount, errorCount] = await Promise.all([
-      this.webCrawlTaskRepository.countAllWebCrawlTasks(),
+    const [newCount, completedCount, errorCount] = await Promise.all([
       this.webCrawlTaskRepository.countWebCrawlTasksByStatus(TaskStatus.NEW),
       this.webCrawlTaskRepository.countWebCrawlTasksByStatus(
         TaskStatus.COMPLETED
@@ -385,12 +366,25 @@ export class WebCrawlTaskManagerService implements IWebCrawlTaskManagerPort {
       this.webCrawlTaskRepository.countWebCrawlTasksByStatus(TaskStatus.ERROR),
     ]);
 
+    const total = newCount + completedCount + errorCount;
+
     const statistics = {
       total,
       new: newCount,
       completed: completedCount,
       error: errorCount,
     };
+
+    // Add business event for statistics retrieval
+    if (activeSpan) {
+      activeSpan.addEvent('business.statistics_retrieved', {
+        total,
+        new: newCount,
+        completed: completedCount,
+        error: errorCount,
+        'statistics.type': 'task_counts_by_status',
+      });
+    }
 
     logger.info('Web crawl task statistics retrieved', statistics);
 

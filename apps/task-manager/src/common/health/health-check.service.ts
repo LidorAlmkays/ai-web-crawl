@@ -49,9 +49,7 @@ export class HealthCheckService implements IHealthCheckService {
 
       const responseTime = Date.now() - startTime;
 
-      logger.debug('Database health check completed successfully', {
-        responseTime,
-      });
+
 
       return {
         status: 'up',
@@ -103,10 +101,7 @@ export class HealthCheckService implements IHealthCheckService {
 
       const responseTime = Date.now() - startTime;
 
-      logger.debug('Kafka health check completed successfully', {
-        responseTime,
-        topicsCount: metadata.topicsCount,
-      });
+
 
       return {
         status: 'up',
@@ -150,9 +145,7 @@ export class HealthCheckService implements IHealthCheckService {
 
       const responseTime = Date.now() - startTime;
 
-      logger.debug('Service health check completed successfully', {
-        responseTime,
-      });
+
 
       return {
         status: 'up',
@@ -193,8 +186,6 @@ export class HealthCheckService implements IHealthCheckService {
    */
   async getSystemHealth(): Promise<SystemHealthStatus> {
     logger.info('Performing system health check');
-
-    const startTime = Date.now();
 
     // Run all health checks in parallel
     const [databaseHealth, kafkaHealth, serviceHealth] =
@@ -242,15 +233,6 @@ export class HealthCheckService implements IHealthCheckService {
     } else {
       status = 'degraded';
     }
-
-    const duration = Date.now() - startTime;
-
-    logger.info('System health check completed', {
-      status,
-      duration,
-      downChecks,
-      totalChecks,
-    });
 
     return {
       status,

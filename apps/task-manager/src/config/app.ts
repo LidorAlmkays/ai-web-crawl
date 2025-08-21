@@ -12,28 +12,14 @@ import { z } from 'zod';
  *
  * The schema includes configuration for:
  * - Environment settings (NODE_ENV)
- * - Logging configuration (level, format, colorization)
- * - Health check settings (enabled, port, path)
  * - Application metadata (name, version, port)
  * - Performance settings (timeouts, graceful shutdown)
- * - Security settings (CORS configuration)
- * - Monitoring settings (metrics configuration)
  */
 const appConfigSchema = z.object({
   // Environment configuration
   NODE_ENV: z
     .enum(['development', 'production', 'test'])
     .default('development'),
-
-  // Logging configuration
-  LOG_LEVEL: z.enum(['error', 'warn', 'info', 'debug']).default('info'),
-  LOG_FORMAT: z.enum(['simple', 'otel']).default('otel'),
-  LOG_COLORIZE: z.coerce.boolean().default(false),
-
-  // Health check configuration
-  HEALTH_CHECK_ENABLED: z.coerce.boolean().default(true),
-  HEALTH_CHECK_PORT: z.coerce.number().int().positive().default(3001),
-  HEALTH_CHECK_PATH: z.string().default('/health'),
 
   // Application configuration
   APP_NAME: z.string().default('task-manager'),
@@ -43,14 +29,6 @@ const appConfigSchema = z.object({
   // Performance configuration
   GRACEFUL_SHUTDOWN_TIMEOUT: z.coerce.number().int().positive().default(30000),
   REQUEST_TIMEOUT: z.coerce.number().int().positive().default(30000),
-
-  // Security configuration
-  CORS_ENABLED: z.coerce.boolean().default(true),
-  CORS_ORIGIN: z.string().default('*'),
-
-  // Monitoring configuration
-  METRICS_ENABLED: z.coerce.boolean().default(false),
-  METRICS_PORT: z.coerce.number().int().positive().default(9090),
 });
 
 /**
@@ -76,12 +54,8 @@ const config = appConfigSchema.parse(process.env);
  *
  * The configuration is organized into logical groups:
  * - Environment settings and computed flags
- * - Logging configuration
- * - Health check settings
  * - Application metadata
  * - Performance settings
- * - Security configuration
- * - Monitoring settings
  */
 export const appConfig = {
   // Environment
@@ -89,20 +63,6 @@ export const appConfig = {
   isDevelopment: config.NODE_ENV === 'development',
   isProduction: config.NODE_ENV === 'production',
   isTest: config.NODE_ENV === 'test',
-
-  // Logging
-  logging: {
-    level: config.LOG_LEVEL,
-    format: config.LOG_FORMAT,
-    colorize: config.LOG_COLORIZE,
-  },
-
-  // Health check
-  healthCheck: {
-    enabled: config.HEALTH_CHECK_ENABLED,
-    port: config.HEALTH_CHECK_PORT,
-    path: config.HEALTH_CHECK_PATH,
-  },
 
   // Application
   app: {
@@ -115,22 +75,6 @@ export const appConfig = {
   performance: {
     gracefulShutdownTimeout: config.GRACEFUL_SHUTDOWN_TIMEOUT,
     requestTimeout: config.REQUEST_TIMEOUT,
-  },
-
-  // Security
-  security: {
-    cors: {
-      enabled: config.CORS_ENABLED,
-      origin: config.CORS_ORIGIN,
-    },
-  },
-
-  // Monitoring
-  monitoring: {
-    metrics: {
-      enabled: config.METRICS_ENABLED,
-      port: config.METRICS_PORT,
-    },
   },
 };
 

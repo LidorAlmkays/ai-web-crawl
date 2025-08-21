@@ -1,7 +1,8 @@
 import { EachMessagePayload } from 'kafkajs';
 import { BaseHandler } from '../base-handler';
 import { validateDto } from '../../../../common/utils/validation';
-import { TaskStatusHeaderDto } from '../../dtos/task-status-header.dto';
+import { BaseTaskHeaderDto, WebCrawlNewTaskHeaderDto, WebCrawlTaskUpdateHeaderDto } from '../../dtos';
+import { TaskStatus } from '../../../../common/enums/task-status.enum';
 import { IWebCrawlTaskManagerPort } from '../../../../application/ports/web-crawl-task-manager.port';
 import { logger } from '../../../../common/utils/logger';
 import { NewTaskHandler } from './new-task.handler';
@@ -67,31 +68,63 @@ export class TaskStatusRouterHandler extends BaseHandler {
    */
   async process(message: EachMessagePayload): Promise<void> {
     const handlerName = 'TaskStatusRouterHandler';
-    const correlationId = this.logProcessingStart(message, handlerName);
+    const processingId = this.logProcessingStart(message, handlerName);
 
     try {
-      // Extract and validate headers
+      // Extract and validate base headers first
       const headers = this.extractHeaders(message.message.headers);
-      const headerValidationResult = await validateDto(
-        TaskStatusHeaderDto,
-        headers
-      );
+      
+      const baseValidation = await validateDto(BaseTaskHeaderDto, headers);
 
-      if (!headerValidationResult.isValid) {
+      if (!baseValidation.isValid) {
         this.logValidationError(
           message,
           handlerName,
-          headerValidationResult.errorMessage,
-          correlationId
+          baseValidation.errorMessage,
+          processingId
         );
-        throw new Error(
-          `Invalid headers: ${headerValidationResult.errorMessage}`
-        );
+        throw new Error(`Invalid headers: ${baseValidation.errorMessage}`);
       }
 
-      const validatedHeaders =
-        headerValidationResult.validatedData as TaskStatusHeaderDto;
-      const { status } = validatedHeaders;
+      // Narrow validation based on status using enum and switch-case
+      const status = (headers.status || '').toString() as TaskStatus;
+      switch (status) {
+        case TaskStatus.NEW: {
+          const newValidation = await validateDto(WebCrawlNewTaskHeaderDto, headers);
+          if (!newValidation.isValid) {
+            this.logValidationError(
+              message,
+              handlerName,
+              newValidation.errorMessage,
+              processingId
+            );
+            throw new Error(`Invalid new-task headers: ${newValidation.errorMessage}`);
+          }
+          break;
+        }
+        case TaskStatus.COMPLETED:
+        case TaskStatus.ERROR: {
+          const updValidation = await validateDto(
+            WebCrawlTaskUpdateHeaderDto,
+            headers
+          );
+          if (!updValidation.isValid) {
+            this.logValidationError(
+              message,
+              handlerName,
+              updValidation.errorMessage,
+              processingId
+            );
+            throw new Error(
+              `Invalid update-task headers: ${updValidation.errorMessage}`
+            );
+          }
+          break;
+        }
+        default: {
+          throw new Error(`Unsupported status: ${status}`);
+        }
+      }
 
       // Get specific handler for status
       const handler = this.handlers[status];
@@ -99,7 +132,7 @@ export class TaskStatusRouterHandler extends BaseHandler {
         logger.error(`No handler registered for status: ${status}`, {
           status,
           receivedMessage: message.message.value?.toString(),
-          correlationId,
+          processingId,
           availableStatuses: Object.keys(this.handlers),
           topic: message.topic,
           partition: message.partition,
@@ -114,7 +147,7 @@ export class TaskStatusRouterHandler extends BaseHandler {
       logger.debug(
         `Routing task-status message to handler for status: ${status}`,
         {
-          correlationId,
+          processingId,
           status,
           topic: message.topic,
           partition: message.partition,
@@ -125,9 +158,9 @@ export class TaskStatusRouterHandler extends BaseHandler {
 
       await handler.process(message);
 
-      this.logProcessingSuccess(message, handlerName, correlationId);
+      this.logProcessingSuccess(message, handlerName, processingId);
       logger.debug(`Task-status message routed successfully`, {
-        correlationId,
+        processingId,
         status,
         topic: message.topic,
         partition: message.partition,
@@ -139,7 +172,7 @@ export class TaskStatusRouterHandler extends BaseHandler {
         message,
         handlerName,
         error,
-        correlationId,
+        processingId,
         'MESSAGE_ROUTING'
       );
     }

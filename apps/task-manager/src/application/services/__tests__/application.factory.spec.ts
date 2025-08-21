@@ -1,3 +1,4 @@
+import 'reflect-metadata';
 import { ApplicationFactory } from '../application.factory';
 import { IWebCrawlMetricsDataPort } from '../../metrics/ports/IWebCrawlMetricsDataPort';
 import { WebCrawlMetricsService } from '../../metrics/services/WebCrawlMetricsService';

@@ -1,7 +1,7 @@
 import { Pool } from 'pg';
 import { IWebCrawlTaskRepositoryPort } from '../../ports/web-crawl-task-repository.port';
 import { WebCrawlTaskRepositoryAdapter } from './adapters/web-crawl-task.repository.adapter';
-import { IWebCrawlMetricsDataPort } from '../../../application/metrics/ports/IWebCrawlMetricsDataPort';
+import { IWebCrawlMetricsDataPort } from '../../ports/web-crawl-metrics-data.port';
 import { WebCrawlMetricsAdapter } from './adapters/WebCrawlMetricsAdapter';
 import { logger } from '../../../common/utils/logger';
 import { PostgresConfigType } from '../../../config/postgres';
@@ -100,7 +100,7 @@ export class PostgresFactory {
       this.isInitialized = true;
 
       // Log important event (database connection) at INFO level
-      logger.info('PostgreSQL connected successfully');
+      // Remove: 'PostgreSQL connected successfully' - let database handle its own log
     } catch (error) {
       logger.error('Failed to create PostgreSQL connection pool', {
         error: error instanceof Error ? error.message : String(error),
@@ -187,9 +187,9 @@ export class PostgresFactory {
    * ```
    */
   public createWebCrawlTaskRepository(): IWebCrawlTaskRepositoryPort {
-    const pool = this.getPool();
     logger.debug('Creating WebCrawlTaskRepositoryAdapter');
-    return new WebCrawlTaskRepositoryAdapter(pool);
+    // Adapter now expects the factory for connection management
+    return new WebCrawlTaskRepositoryAdapter(this);
   }
 
   /**

@@ -98,7 +98,6 @@ export class KafkaMessageGenerator {
       key: Buffer.from(taskId),
       value: Buffer.from(JSON.stringify(messageBody)),
       headers: {
-        id: Buffer.from(taskId),
         task_type: Buffer.from('web-crawl'),
         status: Buffer.from(data.status !== undefined ? data.status : 'new'),
         timestamp: Buffer.from(new Date().toISOString()),
@@ -135,7 +134,6 @@ export class KafkaMessageGenerator {
       key: Buffer.from('invalid-uuid'),
       value: Buffer.from(JSON.stringify(messageBody)),
       headers: {
-        id: Buffer.from('invalid-uuid-format'),
         task_type: Buffer.from('web-crawl'),
         status: Buffer.from('new'),
         timestamp: Buffer.from(new Date().toISOString()),
@@ -173,7 +171,6 @@ export class KafkaMessageGenerator {
       key: Buffer.from(taskId),
       value: Buffer.from(JSON.stringify(messageBody)),
       headers: {
-        id: Buffer.from(taskId),
         task_type: Buffer.from('web-crawl'),
         status: Buffer.from('new'),
         timestamp: Buffer.from(new Date().toISOString()),
@@ -211,7 +208,6 @@ export class KafkaMessageGenerator {
       key: Buffer.from(taskId),
       value: Buffer.from(JSON.stringify(messageBody)),
       headers: {
-        id: Buffer.from(taskId),
         task_type: Buffer.from('web-crawl'),
         status: Buffer.from('new'),
         timestamp: Buffer.from(new Date().toISOString()),
@@ -282,7 +278,6 @@ export class KafkaMessageGenerator {
       key: Buffer.from(taskId),
       value: Buffer.from(JSON.stringify(messageBody)),
       headers: {
-        // Missing id field
         task_type: Buffer.from('web-crawl'),
         status: Buffer.from('new'),
         timestamp: Buffer.from(new Date().toISOString()),
@@ -340,7 +335,6 @@ export class KafkaMessageGenerator {
    */
   static generateMessageWithStatus(status: string): TestKafkaMessage {
     return this.generateValidMessage({
-      taskId: uuidv4(),
       status,
       url: 'https://example.com',
       metadata: { testStatus: status },
@@ -364,7 +358,6 @@ export class KafkaMessageGenerator {
    */
   static generateMessageWithUrl(url: string): TestKafkaMessage {
     return this.generateValidMessage({
-      taskId: uuidv4(),
       status: 'new',
       url,
       metadata: { testUrl: url },
@@ -400,7 +393,6 @@ export class KafkaMessageGenerator {
       key: Buffer.from(taskId),
       value: Buffer.from(JSON.stringify(messageBody)),
       headers: {
-        id: Buffer.from(taskId),
         task_type: Buffer.from('web-crawl'),
         status: Buffer.from('new'),
         timestamp: Buffer.from(new Date().toISOString()),
