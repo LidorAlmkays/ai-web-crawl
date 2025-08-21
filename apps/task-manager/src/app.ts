@@ -1,11 +1,23 @@
 /**
- * Task Manager Service - Application Composition Root
+ * Task Manager Service - Application Layer
  *
- * This file serves as the composition root for the Task Manager service.
- * It handles dependency injection, wiring up infrastructure, application services,
- * and API adapters. It also manages the application lifecycle (startup/shutdown).
- *
- * No business logic should be contained in this file.
+ * RESPONSIBILITY: Service composition and startup
+ * 
+ * This layer is responsible for:
+ * - Dependency injection and factory management
+ * - Resource lifecycle (databases, message queues, HTTP server)
+ * - Service configuration and wiring
+ * - Infrastructure initialization
+ * - Graceful resource cleanup
+ * 
+ * This layer is NOT responsible for:
+ * - Signal handling (handled by server.ts)
+ * - Process lifecycle management
+ * - OpenTelemetry SDK management
+ * - Process exit calls
+ * 
+ * PATTERN: This is the composition root that wires all dependencies
+ * and manages application-level resources. Called by server.ts.
  */
 
 import { appConfig, kafkaConfig, postgresConfig } from './config';
@@ -140,16 +152,21 @@ export class TaskManagerApplication {
       return;
     }
     this.isShuttingDown = true;
-    logger.info('Task Manager shutting down...');
+    logger.info('Task Manager shutting down');
     try {
       if (this.httpServer) {
+        logger.info('Closing HTTP server');
         this.httpServer.close();
       }
       if (this.kafkaApiManager) {
+        logger.info('Pausing Kafka consumers');
         await this.kafkaApiManager.pause();
       }
+      logger.info('Closing Kafka connections');
       await this.kafkaFactory.close();
+      logger.info('Closing PostgreSQL connections');
       await this.postgresFactory.close();
+      logger.info('Task Manager shutdown completed');
     } catch (error) {
       logger.error('Error during shutdown', {
         error: error instanceof Error ? error.message : String(error),

@@ -11,6 +11,51 @@ The Task Manager Service is built using Clean Architecture principles with a foc
 - **Scalability**: Horizontal scaling through event-driven architecture
 - **Maintainability**: Clear structure and consistent patterns
 
+## 🚀 Server/Application Layer Pattern
+
+### Core Principle: Responsibility Separation
+
+The service follows a **Server/Application separation pattern** that should be adopted across all services in the monorepo:
+
+#### **Server Layer** (`src/server.ts`)
+**Responsibility:** Process lifecycle management
+- Signal handling (SIGINT, SIGTERM) for graceful shutdown
+- OpenTelemetry initialization and shutdown
+- Process exit coordination
+- Logging process-level events
+
+**NOT responsible for:**
+- Business logic
+- Dependency injection
+- Resource management (databases, message queues)
+- Service startup logic
+
+#### **Application Layer** (`src/app.ts`) 
+**Responsibility:** Service composition and startup
+- Dependency injection and factory management
+- Resource lifecycle (databases, message queues, HTTP server)
+- Service configuration and wiring
+- Infrastructure initialization
+- Graceful resource cleanup
+
+**NOT responsible for:**
+- Signal handling (handled by server.ts)
+- Process lifecycle management
+- OpenTelemetry SDK management
+- Process exit calls
+
+### Pattern for Other Services
+
+All services should follow this pattern:
+
+1. **Server layer** handles process concerns
+2. **Application layer** handles business concerns
+3. Use structured logging (logger, not console.log)
+4. Proper graceful shutdown sequence
+5. Clear separation of responsibilities
+
+This ensures **consistency across the monorepo** and makes services maintainable, testable, and observable.
+
 ## 🏗️ Architecture Layers
 
 ### Layer Structure

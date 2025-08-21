@@ -21,7 +21,6 @@ process.env.OTEL_TRACES_SAMPLER_ARG = '1.0';
  * - Batch span processor for performance
  * - Resource attributes for service identification
  * - Auto-instrumentation for common libraries
- * - Graceful shutdown handling
  * - Development span debugging (non-production only)
  */
 export const initOpenTelemetry = () => {
@@ -83,29 +82,6 @@ export const initOpenTelemetry = () => {
     SpanDebugger.enable();
     diag.info('Span debugging enabled for development environment');
   }
-
-  // Graceful shutdown handling
-  process.on('SIGTERM', () => {
-    diag.info('Received SIGTERM, shutting down OpenTelemetry SDK...');
-    sdk
-      .shutdown()
-      .then(() => diag.info('OpenTelemetry SDK has been shutdown successfully'))
-      .catch((error) =>
-        diag.error('Error shutting down OpenTelemetry SDK', error)
-      )
-      .finally(() => process.exit(0));
-  });
-
-  process.on('SIGINT', () => {
-    diag.info('Received SIGINT, shutting down OpenTelemetry SDK...');
-    sdk
-      .shutdown()
-      .then(() => diag.info('OpenTelemetry SDK has been shutdown successfully'))
-      .catch((error) =>
-        diag.error('Error shutting down OpenTelemetry SDK', error)
-      )
-      .finally(() => process.exit(0));
-  });
 
   return sdk;
 };
