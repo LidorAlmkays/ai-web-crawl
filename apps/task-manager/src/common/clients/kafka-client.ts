@@ -7,6 +7,8 @@ import {
 } from 'kafkajs';
 import { kafkaConfig } from '../../config';
 import { logger } from '../utils/logger';
+import { extractTraceContextFromHeaders, createTraceContextForLogging } from '../utils/trace-context-extractor';
+import { SimpleSpanManager } from '../utils/simple-span-manager';
 
 // Suppress KafkaJS internal logs
 process.env.KAFKAJS_NO_PARTITIONER_WARNING = '1';
@@ -134,7 +136,7 @@ export class KafkaClient {
 
   private messageHandlers: Map<
     string,
-    (payload: EachMessagePayload) => Promise<void>
+    (payload: EachMessagePayload, traceContext?: any) => Promise<void>
   > = new Map();
   private isRunning = false;
 
@@ -215,7 +217,7 @@ export class KafkaClient {
    */
   async subscribe(
     topic: string,
-    handler: (payload: EachMessagePayload) => Promise<void>
+    handler: (payload: EachMessagePayload, traceContext?: any) => Promise<void>
   ): Promise<void> {
     try {
       // Store the handler for this topic
@@ -266,15 +268,31 @@ export class KafkaClient {
               return;
             }
 
-            // Log routine operation (message processing) at DEBUG level
-            logger.debug('Processing Kafka message', {
-              topic,
-              partition: payload.partition,
-              offset: payload.message.offset,
-            });
+            // Extract trace context from headers (passive extraction)
+            const traceContext = extractTraceContextFromHeaders(payload.message.headers || {});
+            
+            // Use withSpan pattern for proper span management
+            await SimpleSpanManager.withSpan(
+              'kafka-message-processing',
+              async (span) => {
+                // Log routine operation (message processing) at DEBUG level
+                logger.debug('Processing Kafka message', {
+                  topic,
+                  partition: payload.partition,
+                  offset: payload.message.offset,
+                  ...createTraceContextForLogging(traceContext),
+                });
 
-            // Process the message
-            await handler(payload);
+                // Process the message with trace context
+                await handler(payload, traceContext);
+              },
+              traceContext,
+              {
+                'messaging.kafka.topic': topic,
+                'messaging.kafka.partition': payload.partition,
+                'messaging.kafka.offset': payload.message.offset,
+              }
+            );
 
             // Commit offset only after successful processing
             await this.consumer.commitOffsets([
@@ -524,4 +542,6 @@ export class KafkaClient {
       throw error;
     }
   }
+
+
 }

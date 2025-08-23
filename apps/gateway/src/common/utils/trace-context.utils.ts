@@ -13,21 +13,21 @@ export class TraceContextUtils {
    * Create a new trace context for the gateway service
    * Gateway acts as the trace parent for all web crawl requests
    */
-  public static createTraceContext(): TraceContext {
+  public static createTraceContext(): { traceContext: TraceContext; rootSpan: Span } {
     const tracer = trace.getTracer('gateway-service');
-    const span = tracer.startSpan('gateway-root-span');
+    const rootSpan = tracer.startSpan('gateway-root-span');
     
-    const traceId = span.spanContext().traceId;
-    const spanId = span.spanContext().spanId;
-    const traceFlags = span.spanContext().traceFlags;
+    const traceId = rootSpan.spanContext().traceId;
+    const spanId = rootSpan.spanContext().spanId;
+    const traceFlags = rootSpan.spanContext().traceFlags;
     
     const traceparent = `00-${traceId}-${spanId}-${traceFlags.toString(16).padStart(2, '0')}`;
     
-    span.end();
+    const traceContext = { traceparent };
     
     logger.debug('Created new trace context', { traceparent });
     
-    return { traceparent };
+    return { traceContext, rootSpan };
   }
 
   /**
@@ -141,10 +141,75 @@ export class TraceContextUtils {
   }
 
   /**
+   * Create a child span with explicit parent span
+   */
+  public static createChildSpanWithParent(name: string, parentSpan: Span, attributes?: Record<string, any>): Span {
+    const tracer = trace.getTracer('gateway-service');
+    
+    const span = tracer.startSpan(name, {
+      attributes: {
+        'service.name': 'gateway',
+        'service.version': '1.0.0',
+        ...attributes,
+      },
+    }, trace.setSpan(context.active(), parentSpan));
+    
+    return span;
+  }
+
+  /**
+   * Execute a function within a span context
+   */
+  public static async withSpan<T>(
+    name: string,
+    fn: (span: Span) => Promise<T>,
+    attributes?: Record<string, any>
+  ): Promise<T> {
+    const span = this.createChildSpan(name, attributes);
+    
+    try {
+      const result = await fn(span);
+      span.setStatus({ code: SpanStatusCode.OK });
+      return result;
+    } catch (error) {
+      span.setStatus({ code: SpanStatusCode.ERROR, message: error instanceof Error ? error.message : String(error) });
+      span.recordException(error instanceof Error ? error : new Error(String(error)));
+      throw error;
+    } finally {
+      span.end();
+    }
+  }
+
+  /**
+   * Execute a function within a span context with explicit parent
+   */
+  public static async withSpanWithParent<T>(
+    name: string,
+    fn: (span: Span) => Promise<T>,
+    parentSpan: Span,
+    attributes?: Record<string, any>
+  ): Promise<T> {
+    const span = this.createChildSpanWithParent(name, parentSpan, attributes);
+    
+    try {
+      const result = await fn(span);
+      span.setStatus({ code: SpanStatusCode.OK });
+      return result;
+    } catch (error) {
+      span.setStatus({ code: SpanStatusCode.ERROR, message: error instanceof Error ? error.message : String(error) });
+      span.recordException(error instanceof Error ? error : new Error(String(error)));
+      throw error;
+    } finally {
+      span.end();
+    }
+  }
+
+  /**
    * Set span status and end it
    */
   public static endSpan(span: Span, status: SpanStatusCode, message?: string): void {
-    span.setStatus({ code: status, message });
+    // Explicitly set the status before ending
+    span.setStatus({ code: status, message: message || '' });
     span.end();
   }
 

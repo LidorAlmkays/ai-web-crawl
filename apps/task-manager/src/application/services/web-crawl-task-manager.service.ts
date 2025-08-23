@@ -106,10 +106,16 @@ export class WebCrawlTaskManagerService implements IWebCrawlTaskManagerPort {
     }
 
     // Success log (application layer): task persisted successfully
+    const spanContext = activeSpan?.spanContext();
     logger.info('Web crawl task created successfully', {
       taskId: createdTask.id,
       userEmail: createdTask.userEmail,
       status: createdTask.status,
+      // Explicitly include trace context to ensure it's captured
+      traceId: spanContext?.traceId || 'no-trace-id',
+      spanId: spanContext?.spanId || 'no-span-id',
+      hasActiveSpan: !!activeSpan,
+      hasSpanContext: !!spanContext,
     });
 
     return createdTask;
@@ -219,6 +225,11 @@ export class WebCrawlTaskManagerService implements IWebCrawlTaskManagerPort {
     logger.info('Retrieved web crawl tasks by status', {
       status,
       taskCount: tasks.length,
+      // Explicitly include trace context to ensure it's captured
+      ...(activeSpan?.spanContext() && {
+        traceId: activeSpan.spanContext().traceId,
+        spanId: activeSpan.spanContext().spanId,
+      }),
     });
 
     return tasks;
@@ -321,6 +332,11 @@ export class WebCrawlTaskManagerService implements IWebCrawlTaskManagerPort {
     logger.info('Web crawl task updated successfully', {
       taskId: updatedTask.id,
       status: updatedTask.status,
+      // Explicitly include trace context to ensure it's captured
+      ...(activeSpan?.spanContext() && {
+        traceId: activeSpan.spanContext().traceId,
+        spanId: activeSpan.spanContext().spanId,
+      }),
     });
 
     return updatedTask;
@@ -386,7 +402,14 @@ export class WebCrawlTaskManagerService implements IWebCrawlTaskManagerPort {
       });
     }
 
-    logger.info('Web crawl task statistics retrieved', statistics);
+    logger.info('Web crawl task statistics retrieved', {
+      ...statistics,
+      // Explicitly include trace context to ensure it's captured
+      ...(activeSpan?.spanContext() && {
+        traceId: activeSpan.spanContext().traceId,
+        spanId: activeSpan.spanContext().spanId,
+      }),
+    });
 
     return statistics;
   }

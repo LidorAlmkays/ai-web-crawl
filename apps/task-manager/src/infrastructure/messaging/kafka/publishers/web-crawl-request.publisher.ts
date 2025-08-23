@@ -35,7 +35,7 @@ export class WebCrawlRequestPublisher {
   /**
    * Publish web crawl request message
    */
-  async publish(message: WebCrawlRequestMessageDto, options: PublishOptions = {}): Promise<PublishResult> {
+  async publish(message: WebCrawlRequestMessageDto, options: PublishOptions = {}, traceContext?: any): Promise<PublishResult> {
     try {
       // Validate message before publishing
       const validation = await validateDto(WebCrawlRequestMessageDto, message);
@@ -52,8 +52,8 @@ export class WebCrawlRequestPublisher {
         };
       }
 
-      // Prepare Kafka message (auto-instrumentation handles trace context)
-      const kafkaMessage = this.prepareKafkaMessage(message);
+      // Prepare Kafka message with trace context
+      const kafkaMessage = this.prepareKafkaMessage(message, traceContext);
 
       // Publish to Kafka
       const result = await this.kafkaClient.produce({
@@ -102,7 +102,7 @@ export class WebCrawlRequestPublisher {
   /**
    * Publish web crawl request from task data
    */
-  async publishFromTaskData(taskId: string, userEmail: string, userQuery: string, baseUrl: string, options: PublishOptions = {}): Promise<PublishResult> {
+  async publishFromTaskData(taskId: string, userEmail: string, userQuery: string, baseUrl: string, traceContext?: any, options: PublishOptions = {}): Promise<PublishResult> {
     try {
       const message = new WebCrawlRequestMessageDto();
       message.headers = {
@@ -115,7 +115,7 @@ export class WebCrawlRequestPublisher {
         base_url: baseUrl,
       };
 
-      return await this.publish(message, options);
+      return await this.publish(message, options, traceContext);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
 
@@ -137,16 +137,24 @@ export class WebCrawlRequestPublisher {
   /**
    * Prepare Kafka message with proper headers
    */
-  private prepareKafkaMessage(message: WebCrawlRequestMessageDto) {
+  private prepareKafkaMessage(message: WebCrawlRequestMessageDto, traceContext?: any) {
     const headers: Record<string, Buffer> = {};
 
     // Add task_id header
     headers['task_id'] = Buffer.from(message.headers.task_id);
 
-
-
     // Add timestamp
     headers['timestamp'] = Buffer.from(Date.now().toString());
+
+    // Propagate trace context if available
+    if (traceContext) {
+      // Create a new traceparent with the same trace ID but a new span ID
+      const newTraceparent = this.createNewTraceparent(traceContext.traceparent);
+      headers['traceparent'] = Buffer.from(newTraceparent);
+      if (traceContext.tracestate) {
+        headers['tracestate'] = Buffer.from(traceContext.tracestate);
+      }
+    }
 
     return {
       key: message.headers.task_id, // Use task_id as message key for partitioning
@@ -218,6 +226,54 @@ export class WebCrawlRequestPublisher {
       errors,
       warnings,
     };
+  }
+
+  /**
+   * Create a new traceparent with the same trace ID but a new span ID
+   * This ensures proper trace context continuation across services
+   */
+  private createNewTraceparent(originalTraceparent: string): string {
+    try {
+      // Parse the original traceparent: version-traceid-spanid-traceflags
+      const parts = originalTraceparent.split('-');
+      if (parts.length !== 4) {
+        logger.warn('Invalid traceparent format, using original', { originalTraceparent });
+        return originalTraceparent;
+      }
+
+      const [version, traceId, parentSpanId, traceFlags] = parts;
+
+      // Generate a new span ID (16 hex characters)
+      const newSpanId = this.generateSpanId();
+
+      // Create new traceparent: version-traceid-newspanid-traceflags
+      const newTraceparent = `${version}-${traceId}-${newSpanId}-${traceFlags}`;
+
+      logger.debug('Created new traceparent for propagation', {
+        originalTraceparent,
+        newTraceparent,
+        traceId,
+        parentSpanId,
+        newSpanId,
+      });
+
+      return newTraceparent;
+    } catch (error) {
+      logger.error('Error creating new traceparent, using original', {
+        originalTraceparent,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return originalTraceparent;
+    }
+  }
+
+  /**
+   * Generate a random span ID (16 hex characters)
+   */
+  private generateSpanId(): string {
+    return Array.from({ length: 16 }, () => 
+      Math.floor(Math.random() * 16).toString(16)
+    ).join('');
   }
 }
 

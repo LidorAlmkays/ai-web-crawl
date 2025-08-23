@@ -20,10 +20,11 @@ export function traceContextMiddleware(req: Request, res: Response, next: NextFu
       });
     } else {
       // Create new trace context for gateway (trace parent)
-      const newTraceContext = TraceContextUtils.createTraceContext();
-      (req as any).traceContext = newTraceContext;
+      const result = TraceContextUtils.createTraceContext();
+      (req as any).traceContext = result.traceContext;
+      (req as any).rootSpan = result.rootSpan;
       logger.debug('Created new trace context', {
-        traceparent: newTraceContext.traceparent,
+        traceparent: result.traceContext.traceparent,
       });
     }
 

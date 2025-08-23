@@ -66,7 +66,7 @@ export class TaskStatusRouterHandler extends BaseHandler {
    * await routerHandler.process(message);
    * ```
    */
-  async process(message: EachMessagePayload): Promise<void> {
+  async process(message: EachMessagePayload, traceContext?: any): Promise<void> {
     const handlerName = 'TaskStatusRouterHandler';
     const processingId = this.logProcessingStart(message, handlerName);
 
@@ -156,7 +156,7 @@ export class TaskStatusRouterHandler extends BaseHandler {
         }
       );
 
-      await handler.process(message);
+      await handler.process(message, traceContext);
 
       this.logProcessingSuccess(message, handlerName, processingId);
       logger.debug(`Task-status message routed successfully`, {

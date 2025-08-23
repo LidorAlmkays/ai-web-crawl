@@ -44,5 +44,5 @@ export interface IHandler {
    * }
    * ```
    */
-  process(message: EachMessagePayload, traceLogger?: ILogger): Promise<void>;
+  process(message: EachMessagePayload, traceContext?: any, traceLogger?: ILogger): Promise<void>;
 }

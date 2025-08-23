@@ -1,13 +1,9 @@
 import { trace } from '@opentelemetry/api';
-import { request } from 'http';
-import { URL } from 'url';
 import * as os from 'os';
 
 // Gateway-specific configuration - using environment variables to avoid circular dependency
 const svcName = 'gateway';
 const isProd = process.env.NODE_ENV === 'production';
-const logsEndpoint = process.env.OTEL_EXPORTER_OTLP_ENDPOINT || 'http://localhost:4318';
-const otelLogsEnabled = process.env.TRACING_ENABLED !== 'false';
 const environment = process.env.NODE_ENV || 'development';
 
 type LogLevel = 'debug' | 'info' | 'warn' | 'error' | 'success';
@@ -20,45 +16,8 @@ function shouldLog(level: LogLevel) {
 
 // No SDK wiring to keep logger simple and avoid build issues
 
-async function sendToOtel(body: any): Promise<void> {
-  if (!otelLogsEnabled) return;
-  
-  try {
-    const url = new URL(`${logsEndpoint.replace(/\/$/, '')}/v1/logs`);
-    const postData = JSON.stringify(body);
-    
-    const options = {
-      hostname: url.hostname,
-      port: url.port || (url.protocol === 'https:' ? 443 : 80),
-      path: url.pathname + url.search,
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Content-Length': Buffer.byteLength(postData),
-      },
-    };
-
-    return new Promise<void>((resolve) => {
-      const req = request(options, (res) => {
-        // Consume and discard response to free socket
-        res.resume();
-        res.on('end', () => resolve());
-      });
-      
-      req.on('error', () => resolve()); // Silent failure
-      req.on('timeout', () => {
-        req.destroy();
-        resolve();
-      });
-      
-      req.setTimeout(3000);
-      req.write(postData);
-      req.end();
-    });
-  } catch {
-    // Silent failure
-  }
-}
+// Temporarily disabled OTLP log sending to reduce noise
+// TODO: Re-enable with proper OTLP log exporter when needed
 
 function buildServiceInfo(level: LogLevel) {
   const span = trace.getActiveSpan();
@@ -84,20 +43,8 @@ function mapSeverity(level: LogLevel): { severityText: string; severityNumber: n
   }
 }
 
-function hexToBase64(hex: string): string {
-  try {
-    return Buffer.from(hex, 'hex').toString('base64');
-  } catch {
-    return '';
-  }
-}
-
-function toOtlpAttributes(obj: Record<string, any>): any[] {
-  return Object.entries(obj || {}).map(([key, value]) => ({
-    key,
-    value: { stringValue: typeof value === 'string' ? value : JSON.stringify(value) },
-  }));
-}
+// Temporarily disabled OTLP functions
+// TODO: Re-enable with proper OTLP log exporter when needed
 
 function log(level: LogLevel, message: string, info?: Record<string, any>) {
   if (!shouldLog(level)) return;
@@ -129,50 +76,9 @@ function log(level: LogLevel, message: string, info?: Record<string, any>) {
   const line = JSON.stringify(otelConsoleJson, null, 2);
   if (level === 'error') process.stderr.write(line + '\n\n'); else process.stdout.write(line + '\n\n');
 
-  // Proper OTLP/HTTP JSON payload for /v1/logs
-  try {
-    const span = trace.getActiveSpan();
-    const ctx = span?.spanContext();
-    const traceIdB64 = ctx?.traceId ? hexToBase64(ctx.traceId) : undefined;
-    const spanIdB64 = ctx?.spanId ? hexToBase64(ctx.spanId) : undefined;
-    const nowNs = (BigInt(Date.now()) * 1000000n).toString();
-
-    const otlpPayload = {
-      resourceLogs: [
-        {
-          resource: {
-            attributes: toOtlpAttributes({
-              'service.name': svcName,
-              'host.name': serviceInfo.host,
-              'deployment.environment': environment,
-            }),
-          },
-          scopeLogs: [
-            {
-              scope: { name: 'app-logger' },
-              logRecords: [
-                {
-                  timeUnixNano: nowNs,
-                  observedTimeUnixNano: nowNs,
-                  severityNumber,
-                  severityText,
-                  body: { stringValue: message },
-                  attributes: toOtlpAttributes(logInfo),
-                  ...(traceIdB64 ? { traceId: traceIdB64 } : {}),
-                  ...(spanIdB64 ? { spanId: spanIdB64 } : {}),
-                  flags: serviceInfo.traceId ? 1 : 0,
-                },
-              ],
-            },
-          ],
-        },
-      ],
-    };
-
-    void sendToOtel(otlpPayload);
-  } catch {
-    // ignore
-  }
+  // Temporarily disable manual OTLP log sending to reduce noise
+  // The OpenTelemetry SDK will handle trace context automatically
+  // TODO: Re-enable with proper OTLP log exporter when needed
 }
 
 export const logger = {

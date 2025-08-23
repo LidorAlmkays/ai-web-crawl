@@ -22,55 +22,98 @@ export class WebCrawlHandler {
    */
   public async handleWebCrawlRequest(req: Request, res: Response): Promise<void> {
     const startTime = Date.now();
-    const span = TraceContextUtils.createChildSpan('handle-web-crawl-request', {
-      'business.operation': 'handle_web_crawl_request',
-      'http.method': req.method,
-      'http.url': req.url,
-    });
-
+    
+    // Get or create trace context
+    let traceContext: any;
+    
+    if ((req as any).traceContext) {
+      traceContext = (req as any).traceContext;
+    } else {
+      const result = TraceContextUtils.createTraceContext();
+      traceContext = result.traceContext;
+    }
+    
     try {
-      // Get trace context from request
-      const traceContext = (req as any).traceContext || TraceContextUtils.createTraceContext();
-
-      // Validate request body
-      const requestDto = req.body as WebCrawlRequestDto;
-
-      logger.info('Received web crawl request', {
-        userEmail: requestDto.userEmail,
-        query: requestDto.query,
-        originalUrl: requestDto.originalUrl,
-        traceparent: traceContext.traceparent,
+      // Create the main handle span first
+      const handleSpan = TraceContextUtils.createChildSpan('handle-web-crawl-request', {
+        'business.operation': 'handle_web_crawl_request',
+        'http.method': req.method,
+        'http.url': req.url,
       });
 
-      // Process the request
-      const result = await this.webCrawlService.submitWebCrawlRequest(
-        requestDto.userEmail,
-        requestDto.query,
-        requestDto.originalUrl,
-        traceContext
-      );
+      // Set initial status to OK
+      handleSpan.setStatus({ code: SpanStatusCode.OK });
 
-      // Create response DTO
-      const responseDto: WebCrawlResponseDto = {
-        message: result.message,
-        status: result.status,
-      };
+      try {
+        // Validate request body
+        const requestDto = req.body as WebCrawlRequestDto;
 
-      // Record metrics
-      const duration = Date.now() - startTime;
-      this.metrics.incrementRequestCounter('/api/web-crawl', 'POST', 200);
-      this.metrics.recordRequestDuration('/api/web-crawl', 'POST', duration);
+        logger.info('Received web crawl request', {
+          userEmail: requestDto.userEmail,
+          query: requestDto.query,
+          originalUrl: requestDto.originalUrl,
+          traceparent: traceContext.traceparent,
+        });
 
-      // Send response
-      res.status(200).json(responseDto);
+        // Process the request with submit span as child of handle span
+        const result = await TraceContextUtils.withSpanWithParent(
+          'submit-web-crawl-request',
+          async (submitSpan) => {
+            // Publish task to external system with publish span as child of submit span
+            return await TraceContextUtils.withSpanWithParent(
+              'publish-kafka-task',
+              async (publishSpan) => {
+                return await this.webCrawlService.submitWebCrawlRequest(
+                  requestDto.userEmail,
+                  requestDto.query,
+                  requestDto.originalUrl,
+                  traceContext
+                );
+              },
+              submitSpan,
+              {
+                'business.operation': 'publish_kafka_task',
+                'messaging.kafka.topic': 'task-status',
+                'business.user_email': requestDto.userEmail,
+              }
+            );
+          },
+          handleSpan,
+          {
+            'business.operation': 'submit_web_crawl_request',
+            'business.user_email': requestDto.userEmail,
+            'business.query': requestDto.query,
+            'business.original_url': requestDto.originalUrl,
+          }
+        );
 
-      logger.info('Web crawl request processed successfully', {
-        userEmail: requestDto.userEmail,
-        duration,
-        traceparent: traceContext.traceparent,
-      });
+        // Create response DTO
+        const responseDto: WebCrawlResponseDto = {
+          message: result.message,
+          status: result.status,
+        };
 
-      TraceContextUtils.endSpan(span, SpanStatusCode.OK);
+        // Record metrics
+        const duration = Date.now() - startTime;
+        this.metrics.incrementRequestCounter('/api/web-crawl', 'POST', 200);
+        this.metrics.recordRequestDuration('/api/web-crawl', 'POST', duration);
+
+        // Send response
+        res.status(200).json(responseDto);
+
+        logger.info('Web crawl request processed successfully', {
+          userEmail: requestDto.userEmail,
+          duration,
+          traceparent: traceContext.traceparent,
+        });
+
+        // End handle span with success
+        TraceContextUtils.endSpan(handleSpan, SpanStatusCode.OK);
+      } catch (error) {
+        // End handle span with error
+        TraceContextUtils.recordException(handleSpan, error instanceof Error ? error : new Error(String(error)));
+        throw error;
+      }
     } catch (error) {
       const duration = Date.now() - startTime;
       const statusCode = error instanceof Error && error.message.includes('Validation') ? 400 : 500;
@@ -84,8 +127,6 @@ export class WebCrawlHandler {
         duration,
         traceparent: (req as any).traceContext?.traceparent,
       });
-
-      TraceContextUtils.recordException(span, error instanceof Error ? error : new Error(String(error)));
 
       // Send error response
       res.status(statusCode).json({
