@@ -1,114 +1,205 @@
-import 'reflect-metadata';
+import express from 'express';
+import { configuration } from './config';
+import { initializeOpenTelemetry } from './common/utils/otel-init';
 import { logger } from './common/utils/logger';
-import { kafkaClientService } from './common/clients/kafka-client';
-import { webSocketServerManager } from './common/clients/websocket-server';
-import Redis from 'ioredis';
-import { redisConfig } from './config/redis';
+import { ApplicationFactory } from './application/services/application.factory';
+import { KafkaFactory } from './common/clients/kafka.factory';
 
-// --- Ports ---
-import { IWebscrapePort } from './application/ports/webscrape.port';
-import { IProcessCrawlResponsePort } from './application/ports/process-crawl-response.port';
-import { ICrawlRequestPublisherPort } from './infrastructure/ports/crawl-request-publisher.port';
-import { IUserNotificationPort } from './infrastructure/ports/user-notification.port';
-import { ICrawlRequestRepositoryPort } from './application/ports/crawl-request-repository.port';
-import { IConnectionManagerPort } from './application/ports/connection-manager.port';
+import { LocalMetricsAdapter } from './infrastructure/metrics/local-metrics.adapter';
+import { WebCrawlHandler } from './api/rest/handlers/web-crawl.handler';
+import { RestRouter } from './api/rest/rest.router';
+import { 
+  corsMiddleware, 
+  traceContextMiddleware, 
+  requestLoggerMiddleware, 
+  performanceMonitorMiddleware,
+  errorHandlerMiddleware,
+  notFoundMiddleware 
+} from './common/middleware';
 
-// --- Services ---
-import { WebscrapeService } from './application/services/webscrape.service';
-import { ProcessCrawlResponseService } from './application/services/process-crawl-response.service';
-import { ConnectionManagerService } from './application/services/connection-manager.service';
-
-// --- Adapters ---
-import { KafkaCrawlRequestPublisherAdapter } from './infrastructure/messaging/kafka/crawl-request.publisher.adapter';
-import { WebSocketUserNotificationAdapter } from './infrastructure/notification/websocket/user-notification.adapter';
-import { CrawlRequestRepositoryAdapter } from './infrastructure/persistence/redis/crawl-request.repository.adapter';
-
-// --- API ---
-import { setupWebSocketRoutes } from './api/websocket/websocket.router';
-import { AuthHandler } from './api/websocket/handlers/auth.handler';
-import { WebscrapeHandler } from './api/websocket/handlers/webscrape.handler';
-import {
-  initializeKafkaConsumers,
-  startAllConsumers,
-  stopAllConsumers,
-} from './api/kafka/kafka.router';
-
+/**
+ * Main application class for the gateway service
+ * Orchestrates all components and manages the application lifecycle
+ */
 export class Application {
-  private redisClient: Redis;
+  private app: express.Application;
+  private server: any;
+  private kafkaFactory: KafkaFactory;
+  private metrics: LocalMetricsAdapter;
+  private webCrawlHandler!: WebCrawlHandler;
+  private restRouter!: RestRouter;
 
   constructor() {
-    this.redisClient = new Redis(redisConfig);
-    this.setupDependencies();
+    this.app = express();
+    this.kafkaFactory = KafkaFactory.getInstance();
+    this.metrics = new LocalMetricsAdapter();
+  }
+
+  /**
+   * Initialize the application
+   */
+  public async initialize(): Promise<void> {
+    await this.setupApplication();
+  }
+
+  /**
+   * Setup the application with all middleware and routes
+   */
+  private async setupApplication(): Promise<void> {
+    // Initialize OpenTelemetry
+    initializeOpenTelemetry();
+
+    // Setup middleware
+    this.app.use(express.json({ limit: '10mb' }));
+    this.app.use(express.urlencoded({ extended: true }));
+    
+    // Setup CORS middleware
+    this.app.use(corsMiddleware);
+    
+    // Setup trace context middleware
+    this.app.use(traceContextMiddleware);
+    
+    // Setup request logging middleware
+    this.app.use(requestLoggerMiddleware);
+    
+    // Setup performance monitoring middleware
+    this.app.use(performanceMonitorMiddleware(1000)); // 1 second threshold
+
+    // Setup application services
+    await this.setupServices();
+
+    // Setup routes
+    this.setupRoutes();
+
+    // Setup error handling middleware (must be last)
+    this.app.use(notFoundMiddleware);
+    this.app.use(errorHandlerMiddleware);
+
+    // Setup graceful shutdown
     this.setupGracefulShutdown();
   }
 
-  private setupDependencies(): void {
-    logger.info('Setting up application dependencies...');
+  /**
+   * Setup application services with dependency injection
+   */
+  private async setupServices(): Promise<void> {
+    const appFactory = ApplicationFactory.getInstance();
 
-    // --- Infrastructure Adapters ---
-    const crawlRequestPublisher: ICrawlRequestPublisherPort =
-      new KafkaCrawlRequestPublisherAdapter(kafkaClientService);
-    const userNotification: IUserNotificationPort =
-      new WebSocketUserNotificationAdapter();
-    const crawlRequestRepository: ICrawlRequestRepositoryPort =
-      new CrawlRequestRepositoryAdapter(this.redisClient);
+    // Get Kafka producer from factory
+    const producer = await this.kafkaFactory.getProducer();
 
-    // --- Application Services ---
-    const connectionManager: IConnectionManagerPort =
-      new ConnectionManagerService();
-    const webscrapeService: IWebscrapePort = new WebscrapeService(
-      crawlRequestRepository,
-      crawlRequestPublisher
-    );
-    const processCrawlResponseService: IProcessCrawlResponsePort =
-      new ProcessCrawlResponseService(
-        crawlRequestRepository,
-        connectionManager,
-        userNotification
-      );
+    // Create web crawl service (application service)
+    const webCrawlService = appFactory.createWebCrawlService(producer, this.metrics);
 
-    // --- API Handlers ---
-    const authHandler = new AuthHandler(
-      connectionManager,
-      crawlRequestRepository,
-      userNotification
-    );
-    const webscrapeHandler = new WebscrapeHandler(webscrapeService);
+    // Create web crawl handler
+    this.webCrawlHandler = new WebCrawlHandler(webCrawlService, this.metrics);
 
-    // --- Initialize API Routes and Consumers ---
-    setupWebSocketRoutes(
-      webSocketServerManager.getWss(),
-      connectionManager,
-      authHandler,
-      webscrapeHandler
-    );
-    initializeKafkaConsumers(kafkaClientService, processCrawlResponseService);
+    // Create REST router
+    this.restRouter = new RestRouter(this.webCrawlHandler, this.metrics);
 
-    logger.info('Dependencies set up successfully.');
+    logger.info('Application services setup completed');
   }
 
-  public async start(): Promise<void> {
-    await kafkaClientService.connect();
-    await startAllConsumers();
-    logger.info('Application started successfully.');
+  /**
+   * Setup application routes
+   */
+  private setupRoutes(): void {
+    // Mount REST API routes
+    this.app.use('/', this.restRouter.getRouter());
+
+    // Metrics endpoint
+    this.app.get('/metrics', (req, res) => {
+      res.set('Content-Type', 'text/plain');
+      res.send(this.metrics.getMetricsData());
+    });
+
+    logger.info('Application routes setup completed');
   }
 
-  public async stop(): Promise<void> {
-    await stopAllConsumers();
-    await kafkaClientService.disconnect();
-    this.redisClient.disconnect();
-    webSocketServerManager.close();
-    logger.info('Application stopped successfully.');
-  }
-
+  /**
+   * Setup graceful shutdown handlers
+   */
   private setupGracefulShutdown(): void {
     const signals = ['SIGINT', 'SIGTERM', 'SIGQUIT'];
+
     signals.forEach((signal) => {
       process.on(signal, async () => {
-        logger.info(`Received ${signal}, shutting down gracefully.`);
+        logger.info(`Received ${signal}, shutting down gracefully`);
         await this.stop();
         process.exit(0);
       });
     });
+
+    process.on('uncaughtException', (error) => {
+      logger.error('Uncaught exception', { error });
+      this.stop().then(() => process.exit(1));
+    });
+
+    process.on('unhandledRejection', (reason, promise) => {
+      logger.error('Unhandled rejection', { reason, promise });
+      this.stop().then(() => process.exit(1));
+    });
+  }
+
+  /**
+   * Start the application
+   */
+  public async start(): Promise<void> {
+    try {
+      const config = configuration.getConfig();
+
+      // Start HTTP server
+      this.server = this.app.listen(config.server.port, config.server.host, () => {
+        logger.info('Gateway service started successfully', {
+          port: config.server.port,
+          host: config.server.host,
+          environment: config.environment,
+        });
+      });
+
+      // Handle server errors
+      this.server.on('error', (error: Error) => {
+        logger.error('Server error', { error });
+        throw error;
+      });
+
+    } catch (error) {
+      logger.error('Failed to start gateway service', { error });
+      throw error;
+    }
+  }
+
+  /**
+   * Stop the application gracefully
+   */
+  public async stop(): Promise<void> {
+    try {
+      logger.info('Stopping gateway service...');
+
+      // Close HTTP server
+      if (this.server) {
+        await new Promise<void>((resolve) => {
+          this.server.close(() => {
+            logger.info('HTTP server closed');
+            resolve();
+          });
+        });
+      }
+
+      // Disconnect Kafka
+      await this.kafkaFactory.disconnect();
+
+      logger.info('Gateway service stopped successfully');
+    } catch (error) {
+      logger.error('Error during shutdown', { error });
+      throw error;
+    }
+  }
+
+  /**
+   * Get the Express application instance (for testing)
+   */
+  public getApp(): express.Application {
+    return this.app;
   }
 }

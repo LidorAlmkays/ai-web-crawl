@@ -8,10 +8,16 @@ receivers:
   prometheus:
     config:
       scrape_configs:
-        - job_name: 'task-manager'
+        - job_name: "task-manager"
           static_configs:
-            - targets: ['host.docker.internal:3000']
-          metrics_path: '/api/metrics'
+            - targets: ["host.docker.internal:3000"]
+          metrics_path: "/api/metrics"
+          scrape_interval: 30s
+          scrape_timeout: 10s
+        - job_name: "gateway"
+          static_configs:
+            - targets: ["host.docker.internal:3002"]
+          metrics_path: "/api/metrics"
           scrape_interval: 30s
           scrape_timeout: 10s
 
@@ -22,18 +28,15 @@ processors:
   memory_limiter:
     check_interval: 1s
     limit_mib: 1500
-  resource:
-    attributes:
-      - key: service.name
-        value: task-manager
-        action: upsert
+  # Removed resource processor that was overriding service names
+  # Each service should set its own service name
 
 exporters:
   debug:
     verbosity: detailed
   prometheus:
-    endpoint: '0.0.0.0:9464'
-    namespace: 'task_manager'
+    endpoint: "0.0.0.0:9464"
+    namespace: ""
     send_timestamps: true
     metric_expiration: 180m
     enable_open_metrics: true
@@ -42,7 +45,7 @@ exporters:
     tls:
       insecure: true
   otlphttp/loki:
-    endpoint: 'http://loki:3100/otlp'
+    endpoint: "http://loki:3100/otlp"
     tls:
       insecure: true
 
@@ -50,13 +53,13 @@ service:
   pipelines:
     traces:
       receivers: [otlp]
-      processors: [batch, memory_limiter, resource]
+      processors: [batch, memory_limiter]
       exporters: [otlp/tempo, debug]
     logs:
       receivers: [otlp]
-      processors: [batch, memory_limiter, resource]
+      processors: [batch, memory_limiter]
       exporters: [otlphttp/loki, debug]
     metrics:
       receivers: [otlp, prometheus]
-      processors: [batch, memory_limiter, resource]
+      processors: [batch, memory_limiter]
       exporters: [prometheus, debug]
