@@ -1,6 +1,9 @@
 import { EachMessagePayload } from 'kafkajs';
 import { BaseHandler } from '../base-handler';
-import { WebCrawlNewTaskHeaderDto, WebCrawlNewTaskMessageDto } from '../../dtos';
+import {
+  WebCrawlNewTaskHeaderDto,
+  WebCrawlNewTaskMessageDto,
+} from '../../dtos';
 import { IWebCrawlTaskManagerPort } from '../../../../application/ports/web-crawl-task-manager.port';
 import { WebCrawlRequestPublisher } from '../../../../infrastructure/messaging/kafka/publishers/web-crawl-request.publisher';
 import { logger } from '../../../../common/utils/logger';
@@ -19,30 +22,40 @@ export class NewTaskHandler extends BaseHandler {
     webCrawlPublisher?: WebCrawlRequestPublisher
   ) {
     super();
-    this.webCrawlPublisher = webCrawlPublisher || new WebCrawlRequestPublisher();
+    this.webCrawlPublisher =
+      webCrawlPublisher || new WebCrawlRequestPublisher();
   }
 
   /**
    * Process new task message with enhanced trace context and web crawl request publishing
    */
-  async process(message: EachMessagePayload, traceContext?: any): Promise<void> {
+  async process(
+    message: EachMessagePayload,
+    traceContext?: any
+  ): Promise<void> {
     const handlerName = 'NewTaskHandler';
     const processingId = this.logProcessingStart(message, handlerName);
 
     // Create the main new-task-processing span first
-    const newTaskSpan = SimpleSpanManager.createSpanFromTraceContext('new-task-processing', traceContext, {
-      'business.operation': 'create_task',
-      'business.handler': handlerName,
-      'messaging.kafka.processing_id': processingId,
-    });
+    const newTaskSpan = SimpleSpanManager.createSpanFromTraceContext(
+      'new-task-processing',
+      traceContext,
+      {
+        'business.operation': 'create_task',
+        'business.handler': handlerName,
+        'messaging.kafka.processing_id': processingId,
+      }
+    );
 
     // Set initial status to OK
     newTaskSpan.setStatus({ code: 0 });
 
     try {
       // Extract and validate message headers using new DTO structure
-      const headers = this.extractHeaders(message.message.headers as Record<string, Buffer | undefined> || {});
-      
+      const headers = this.extractHeaders(
+        (message.message.headers as Record<string, Buffer | undefined>) || {}
+      );
+
       // Log trace context received
       logger.info('Trace context received', {
         traceId: traceContext?.traceId,
@@ -53,8 +66,11 @@ export class NewTaskHandler extends BaseHandler {
       await SimpleSpanManager.withSpanWithParent(
         'validate-headers',
         async (validateHeadersSpan) => {
-          const headerValidationResult = await validateDto(WebCrawlNewTaskHeaderDto, headers);
-          
+          const headerValidationResult = await validateDto(
+            WebCrawlNewTaskHeaderDto,
+            headers
+          );
+
           if (!headerValidationResult.isValid) {
             this.logValidationError(
               message,
@@ -62,13 +78,15 @@ export class NewTaskHandler extends BaseHandler {
               headerValidationResult.errorMessage || 'Header validation failed',
               processingId
             );
-            throw new Error(`Invalid headers: ${headerValidationResult.errorMessage}`);
+            throw new Error(
+              `Invalid headers: ${headerValidationResult.errorMessage}`
+            );
           }
         },
         newTaskSpan,
         {
           'business.operation': 'validate_headers',
-          'processingId': processingId,
+          processingId: processingId,
         }
       );
 
@@ -80,8 +98,11 @@ export class NewTaskHandler extends BaseHandler {
             message.message.value?.toString() || '{}'
           );
 
-          const bodyValidationResult = await validateDto(WebCrawlNewTaskMessageDto, messageBody);
-          
+          const bodyValidationResult = await validateDto(
+            WebCrawlNewTaskMessageDto,
+            messageBody
+          );
+
           if (!bodyValidationResult.isValid) {
             this.logValidationError(
               message,
@@ -89,7 +110,9 @@ export class NewTaskHandler extends BaseHandler {
               bodyValidationResult.errorMessage || 'Body validation failed',
               processingId
             );
-            throw new Error(`Invalid message body: ${bodyValidationResult.errorMessage}`);
+            throw new Error(
+              `Invalid message body: ${bodyValidationResult.errorMessage}`
+            );
           }
 
           return bodyValidationResult.validatedData!;
@@ -97,7 +120,7 @@ export class NewTaskHandler extends BaseHandler {
         newTaskSpan,
         {
           'business.operation': 'validate_message_body',
-          'processingId': processingId,
+          processingId: processingId,
         }
       );
 
@@ -124,11 +147,26 @@ export class NewTaskHandler extends BaseHandler {
       const createdTask = await SimpleSpanManager.withSpanWithParent(
         'save-to-database',
         async (saveSpan) => {
-          return await this.webCrawlTaskManager.createWebCrawlTask(
+          const task = await this.webCrawlTaskManager.createWebCrawlTask(
             validatedData.user_email,
             validatedData.user_query,
             validatedData.base_url
           );
+
+          // Verify the task was actually created
+          if (!task || !task.id) {
+            throw new Error('Task creation failed - no task ID returned');
+          }
+
+          logger.info('Task successfully saved to database', {
+            taskId: task.id,
+            userEmail: task.userEmail,
+            status: task.status,
+            traceId: traceContext?.traceId,
+            spanId: traceContext?.spanId,
+          });
+
+          return task;
         },
         newTaskSpan,
         {
@@ -142,12 +180,33 @@ export class NewTaskHandler extends BaseHandler {
       await SimpleSpanManager.withSpanWithParent(
         'publish-web-crawl-request',
         async (publishSpan) => {
-          return await this.publishWebCrawlRequest(createdTask, traceContext);
+          const publishResult = await this.publishWebCrawlRequest(
+            createdTask,
+            traceContext
+          );
+
+          // Verify the publish operation actually succeeded
+          if (!publishResult.success) {
+            throw new Error(
+              `Failed to publish web crawl request: ${publishResult.error}`
+            );
+          }
+
+          logger.info('Web crawl request successfully published to Kafka', {
+            taskId: createdTask.id,
+            topic: publishResult.topic,
+            partition: publishResult.partition,
+            offset: publishResult.offset,
+            traceId: traceContext?.traceId,
+            spanId: traceContext?.spanId,
+          });
+
+          return publishResult;
         },
         newTaskSpan,
         {
           'business.operation': 'publish_web_crawl_request',
-          'taskId': createdTask.id,
+          taskId: createdTask.id,
         }
       );
 
@@ -162,7 +221,20 @@ export class NewTaskHandler extends BaseHandler {
       SimpleSpanManager.endSpan(newTaskSpan);
     } catch (error) {
       // End main span with error
-      SimpleSpanManager.endSpanWithError(newTaskSpan, error instanceof Error ? error : new Error(String(error)));
+      SimpleSpanManager.endSpanWithError(
+        newTaskSpan,
+        error instanceof Error ? error : new Error(String(error))
+      );
+
+      // Log the error with full context
+      logger.error('New task processing failed', {
+        error: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+        processingId,
+        traceId: traceContext?.traceId,
+        spanId: traceContext?.spanId,
+      });
+
       throw error;
     }
   }
@@ -171,9 +243,20 @@ export class NewTaskHandler extends BaseHandler {
    * Publish web crawl request with trace context
    */
   private async publishWebCrawlRequest(
-    task: { id: string; userEmail: string; userQuery: string; originalUrl: string },
+    task: {
+      id: string;
+      userEmail: string;
+      userQuery: string;
+      originalUrl: string;
+    },
     traceContext?: any
-  ): Promise<void> {
+  ): Promise<{
+    success: boolean;
+    error?: string;
+    topic?: string;
+    partition?: number;
+    offset?: number;
+  }> {
     try {
       const publishResult = await this.webCrawlPublisher.publishFromTaskData(
         task.id,
@@ -184,10 +267,12 @@ export class NewTaskHandler extends BaseHandler {
       );
 
       if (!publishResult.success) {
-        throw new Error(`Failed to publish web crawl request: ${publishResult.error}`);
+        throw new Error(
+          `Failed to publish web crawl request: ${publishResult.error}`
+        );
       }
 
-
+      return publishResult;
     } catch (error) {
       logger.error('Failed to publish web crawl request', {
         taskId: task.id,

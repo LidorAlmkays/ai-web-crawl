@@ -19,7 +19,9 @@ import { trace } from '@opentelemetry/api';
  * - Transaction management for complex operations
  * - Performance monitoring and logging
  */
-export class WebCrawlTaskRepositoryAdapter implements IWebCrawlTaskRepositoryPort {
+export class WebCrawlTaskRepositoryAdapter
+  implements IWebCrawlTaskRepositoryPort
+{
   private readonly postgresFactory: PostgresFactory;
 
   constructor(postgresFactory: PostgresFactory) {
@@ -40,7 +42,7 @@ export class WebCrawlTaskRepositoryAdapter implements IWebCrawlTaskRepositoryPor
     receivedAt: Date
   ): Promise<WebCrawlTask> {
     const activeSpan = trace.getActiveSpan();
-    
+
     // Add business attributes to active span
     if (activeSpan) {
       activeSpan.setAttributes({
@@ -63,8 +65,17 @@ export class WebCrawlTaskRepositoryAdapter implements IWebCrawlTaskRepositoryPor
         });
       }
 
+      logger.info('Creating web crawl task in database', {
+        userEmail,
+        userQuery:
+          userQuery.substring(0, 100) + (userQuery.length > 100 ? '...' : ''),
+        originalUrl,
+        receivedAt: receivedAt.toISOString(),
+      });
+
       // Use stored procedure to create web crawl task
-      const query = 'SELECT create_web_crawl_task($1, $2, $3, $4, $5, $6, $7) as id';
+      const query =
+        'SELECT create_web_crawl_task($1, $2, $3, $4, $5, $6, $7) as id';
 
       const values = [
         userEmail,
@@ -77,19 +88,48 @@ export class WebCrawlTaskRepositoryAdapter implements IWebCrawlTaskRepositoryPor
       ];
 
       const result = await client.query(query, values);
+
+      if (!result.rows || result.rows.length === 0) {
+        throw new Error(
+          'No result returned from create_web_crawl_task function'
+        );
+      }
+
       const taskId = result.rows[0].id;
-      
-      // Construct the task entity directly from the data we already have
-      const now = new Date();
+
+      if (!taskId) {
+        throw new Error(
+          'No task ID returned from create_web_crawl_task function'
+        );
+      }
+
+      logger.info('Task ID generated successfully', { taskId });
+
+      // Verify the task was actually created by querying it back
+      const verifyQuery = 'SELECT * FROM web_crawl_tasks WHERE id = $1';
+      const verifyResult = await client.query(verifyQuery, [taskId]);
+
+      if (verifyResult.rows.length === 0) {
+        throw new Error(
+          `Task was not found in database after creation. Task ID: ${taskId}`
+        );
+      }
+
+      const dbRow = verifyResult.rows[0];
+
+      // Construct the task entity from the database row
       const createdTask = new WebCrawlTask(
-        taskId,
-        userEmail,
-        userQuery,
-        originalUrl,
-        receivedAt,
-        TaskStatus.NEW,
-        now,  // created_at
-        now   // updated_at
+        dbRow.id,
+        dbRow.user_email,
+        dbRow.user_query,
+        dbRow.original_url,
+        new Date(dbRow.received_at),
+        dbRow.status as TaskStatus,
+        new Date(dbRow.created_at),
+        new Date(dbRow.updated_at),
+        dbRow.result || null,
+        dbRow.started_at ? new Date(dbRow.started_at) : undefined,
+        dbRow.finished_at ? new Date(dbRow.finished_at) : undefined
       );
 
       // Add business event for successful database operation
@@ -101,26 +141,50 @@ export class WebCrawlTaskRepositoryAdapter implements IWebCrawlTaskRepositoryPor
         });
       }
 
-
+      logger.info(
+        'Web crawl task successfully created and verified in database',
+        {
+          taskId: createdTask.id,
+          userEmail: createdTask.userEmail,
+          status: createdTask.status,
+          createdAt: createdTask.createdAt.toISOString(),
+          // Explicitly include trace context to ensure it's captured
+          ...(activeSpan?.spanContext() && {
+            traceId: activeSpan.spanContext().traceId,
+            spanId: activeSpan.spanContext().spanId,
+          }),
+        }
+      );
 
       return createdTask;
     } catch (error) {
       // Add error attributes to active span
       if (activeSpan) {
         activeSpan.setAttributes({
-          'error.type': error instanceof Error ? error.constructor.name : 'Unknown',
-          'error.message': error instanceof Error ? error.message : String(error),
+          'error.type':
+            error instanceof Error ? error.constructor.name : 'Unknown',
+          'error.message':
+            error instanceof Error ? error.message : String(error),
           'error.stack': error instanceof Error ? error.stack : undefined,
           'business.operation': 'create_web_crawl_task_error',
         });
       }
 
-      logger.error('Failed to create web crawl task', {
+      logger.error('Failed to create web crawl task in database', {
         error: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
         userEmail,
+        userQuery:
+          userQuery.substring(0, 100) + (userQuery.length > 100 ? '...' : ''),
+        originalUrl,
+        // Explicitly include trace context to ensure it's captured
+        ...(activeSpan?.spanContext() && {
+          traceId: activeSpan.spanContext().traceId,
+          spanId: activeSpan.spanContext().spanId,
+        }),
       });
 
-          throw error;
+      throw error;
     } finally {
       client.release();
     }
@@ -156,8 +220,6 @@ export class WebCrawlTaskRepositoryAdapter implements IWebCrawlTaskRepositoryPor
     }
   }
 
-
-
   /**
    * Finds all web crawl tasks with a specific status
    *
@@ -184,8 +246,6 @@ export class WebCrawlTaskRepositoryAdapter implements IWebCrawlTaskRepositoryPor
     }
   }
 
-
-
   /**
    * Updates an existing web crawl task in the database
    *
@@ -200,7 +260,7 @@ export class WebCrawlTaskRepositoryAdapter implements IWebCrawlTaskRepositoryPor
     try {
       // Use stored procedure to update web crawl task
       const query = 'SELECT update_web_crawl_task($1, $2, $3, $4, $5)';
-      
+
       const values = [
         task.id,
         task.status,
@@ -224,8 +284,6 @@ export class WebCrawlTaskRepositoryAdapter implements IWebCrawlTaskRepositoryPor
       client.release();
     }
   }
-
-
 
   /**
    * Counts web crawl tasks with a specific status
@@ -274,6 +332,4 @@ export class WebCrawlTaskRepositoryAdapter implements IWebCrawlTaskRepositoryPor
       row.finished_at ? new Date(row.finished_at) : undefined
     );
   }
-
-
 }

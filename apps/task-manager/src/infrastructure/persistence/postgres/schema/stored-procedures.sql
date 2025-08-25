@@ -6,7 +6,7 @@
 -- =============================================================================
 
 -- Create web crawl task procedure
--- Inserts a new web crawl task into the database
+-- Inserts a new web crawl task into the database and returns the generated ID
 CREATE OR REPLACE FUNCTION create_web_crawl_task(
   p_user_email VARCHAR(255),
   p_user_query TEXT,
@@ -52,7 +52,7 @@ $$ LANGUAGE plpgsql;
 CREATE OR REPLACE FUNCTION update_web_crawl_task(
   p_id UUID,
   p_status task_status,
-  p_data TEXT,
+  p_result TEXT,
   p_finished_at TIMESTAMP WITH TIME ZONE,
   p_updated_at TIMESTAMP WITH TIME ZONE
 ) RETURNS VOID AS $$
@@ -60,10 +60,14 @@ BEGIN
   UPDATE web_crawl_tasks 
   SET 
     status = p_status,
-    data = p_data,
+    result = p_result,
     finished_at = p_finished_at,
     updated_at = p_updated_at
   WHERE id = p_id;
+  
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Task with id % not found', p_id;
+  END IF;
 END;
 $$ LANGUAGE plpgsql;
 

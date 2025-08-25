@@ -73,7 +73,7 @@ SELECT
     created_at,
     updated_at
 FROM web_crawl_tasks
-WHERE status IN ('completed_success', 'completed_error');
+WHERE status IN ('completed', 'error');
 
 
 
